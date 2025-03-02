@@ -4,7 +4,7 @@
 
 Kotlin, Ktor, корутины, библиотека для сериализации JSON и т.п.
 
-Redis Server/KeyDB – кэш БД, брокер сообщений
+Kafka – брокер сообщений
 
 PostgreSQL и аналоги (гольй SQL)
 
