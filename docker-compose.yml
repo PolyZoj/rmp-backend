@@ -1,0 +1,245 @@
+version: "3.9"
+
+services:
+  # Databases
+  psql_users:
+    image: postgres:15-alpine
+    container_name: psql_users
+    environment:
+      - POSTGRES_DB=user_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - psql_users_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - backend_net
+
+  psql_clubs:
+    image: postgres:15-alpine
+    container_name: psql_clubs
+    environment:
+      - POSTGRES_DB=club_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - psql_clubs_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    networks:
+      - backend_net
+
+  psql_challenges:
+    image: postgres:15-alpine
+    container_name: psql_challenges
+    environment:
+      - POSTGRES_DB=challenges_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - psql_challenges_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    networks:
+      - backend_net
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ports:
+      - "8123:8123"
+    networks:
+      - backend_net
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      # Format: <nodeId>@<host>:<port>
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /kafka/kraft
+    volumes:
+      - kafka_data:/kafka/kraft
+    ports:
+      - "9092:9092"
+    networks:
+      - backend_net
+
+  # Microservices
+    # Externally exposed
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    depends_on:
+      - psql_users
+      - kafka
+    ports:
+      - "8081:8080"
+    environment:
+      - DB_HOST=psql_users
+      - DB_PORT=5432
+      - DB_NAME=user_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    depends_on:
+      - psql_users
+      - kafka
+    ports:
+      - "8082:8080"
+    environment:
+      - DB_HOST=psql_users
+      - DB_PORT=5432
+      - DB_NAME=user_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  notification-service:
+    build: ./notification-service
+    container_name: notification-service
+    depends_on:
+      - kafka
+    ports:
+      - "8083:8080"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  challenges-service:
+    build: ./challenges-service
+    container_name: challenges-service
+    depends_on:
+      - psql_challenges
+      - kafka
+    ports:
+      - "8084:8080"
+    environment:
+      - DB_HOST=psql_challenges
+      - DB_PORT=5432
+      - DB_NAME=challenges_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  club-service:
+    build: ./club-service
+    container_name: club-service
+    depends_on:
+      - psql_clubs
+      - kafka
+    ports:
+      - "8085:8080"
+    environment:
+      - DB_HOST=psql_clubs
+      - DB_PORT=5432
+      - DB_NAME=club_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  # Microservices
+    # Internal
+  payment-service:
+    build: ./payment-service
+    container_name: payment-service
+    depends_on:
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  stats-service:
+    build: ./stats-service
+    container_name: stats-service
+    depends_on:
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  gamification-service:
+    build: ./gamification-service
+    container_name: gamification-service
+    depends_on:
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+  log-service:
+    build: ./log-service
+    container_name: log-service
+    depends_on:
+      - clickhouse
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    networks:
+      - backend_net
+    deploy:
+      replicas: 3
+
+networks:
+  backend_net:
+
+volumes:
+  psql_users_data:
+  psql_clubs_data:
+  psql_challenges_data:
+  clickhouse_data:
+  kafka_data:
