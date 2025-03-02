@@ -3,7 +3,7 @@ version: "3.9"
 services:
   # Databases
   psql_users:
-    image: postgres:15-alpine
+    image: postgres:latest-alpine
     container_name: psql_users
     environment:
       - POSTGRES_DB=user_db
@@ -17,7 +17,7 @@ services:
       - backend_net
 
   psql_clubs:
-    image: postgres:15-alpine
+    image: postgres:latest-alpine
     container_name: psql_clubs
     environment:
       - POSTGRES_DB=club_db
@@ -31,7 +31,7 @@ services:
       - backend_net
 
   psql_challenges:
-    image: postgres:15-alpine
+    image: postgres:latest-alpine
     container_name: psql_challenges
     environment:
       - POSTGRES_DB=challenges_db
