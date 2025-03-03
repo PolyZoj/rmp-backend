@@ -5,40 +5,70 @@ services:
     image: postgres:alpine
     environment:
       - POSTGRES_DB=user_db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
     volumes:
       - psql_users_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
 
   psql_clubs:
     image: postgres:alpine
     environment:
       - POSTGRES_DB=club_db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
     volumes:
       - psql_clubs_data:/var/lib/postgresql/data
     ports:
       - "5434:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
 
   psql_challenges:
     image: postgres:alpine
     environment:
       - POSTGRES_DB=challenges_db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
     volumes:
       - psql_challenges_data:/var/lib/postgresql/data
     ports:
       - "5435:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -46,30 +76,51 @@ services:
       - clickhouse_data:/var/lib/clickhouse
     ports:
       - "8123:8123"
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
 
   # Kafka
-#  kafka:
-#    image: confluentinc/cp-kafka:latest
-#    environment:
-#      CLUSTER_ID: 57e2fe15-99cf-4721-afdf-c971d264472b
-#      KAFKA_BROKER_ID: 1
-#      KAFKA_PROCESS_ROLES: broker,controller
-#      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-#      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-#      # Format: <nodeId>@<host>:<port>
-#      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9092
-#      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-#      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-#      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-#      KAFKA_LOG_DIRS: /kafka/kraft
-#    volumes:
-#      - kafka_data:/kafka/kraft
-#    ports:
-#      - "9092:9092"
-#    networks:
-#      - backend_net
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.4
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "22181:2181"
+  kafka:
+    image: confluentinc/cp-kafka:7.4.4
+    hostname: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: [ "CMD", "bash", "-c", "cub kafka-ready -b localhost:9092 1 20" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+
 
   # Microservices
     # Externally exposed
@@ -93,6 +144,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   user-service:
     build: ./user-service
@@ -113,6 +168,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   notification-service:
     build: ./notification-service
@@ -127,6 +186,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   challenges-service:
     build: ./challenges-service
@@ -147,6 +210,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   club-service:
     build: ./club-service
@@ -167,6 +234,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   # Microservices
     # Internal
@@ -183,6 +254,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   stats-service:
     build: ./stats-service
@@ -197,6 +272,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   gamification-service:
     build: ./gamification-service
@@ -211,6 +290,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
   log-service:
     build: ./log-service
@@ -228,6 +311,10 @@ services:
       - backend_net
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
 
 networks:
   backend_net:
