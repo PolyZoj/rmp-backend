@@ -1,10 +1,8 @@
-version: "3.9"
 
 services:
   # Databases
   psql_users:
-    image: postgres:latest-alpine
-    container_name: psql_users
+    image: postgres:alpine
     environment:
       - POSTGRES_DB=user_db
       - POSTGRES_USER=postgres
@@ -17,8 +15,7 @@ services:
       - backend_net
 
   psql_clubs:
-    image: postgres:latest-alpine
-    container_name: psql_clubs
+    image: postgres:alpine
     environment:
       - POSTGRES_DB=club_db
       - POSTGRES_USER=postgres
@@ -31,8 +28,7 @@ services:
       - backend_net
 
   psql_challenges:
-    image: postgres:latest-alpine
-    container_name: psql_challenges
+    image: postgres:alpine
     environment:
       - POSTGRES_DB=challenges_db
       - POSTGRES_USER=postgres
@@ -46,7 +42,6 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
-    container_name: clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     ports:
@@ -57,7 +52,6 @@ services:
   # Kafka
   kafka:
     image: confluentinc/cp-kafka:latest
-    container_name: kafka
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -81,7 +75,7 @@ services:
 
   auth-service:
     build: ./auth-service
-    container_name: auth-service
+    image: rmp-backend-auth-service
     depends_on:
       - psql_users
       - kafka
@@ -101,7 +95,7 @@ services:
 
   user-service:
     build: ./user-service
-    container_name: user-service
+    image: rmp-backend-user-service
     depends_on:
       - psql_users
       - kafka
@@ -121,7 +115,7 @@ services:
 
   notification-service:
     build: ./notification-service
-    container_name: notification-service
+    image: rmp-backend-notification-service
     depends_on:
       - kafka
     ports:
@@ -135,7 +129,7 @@ services:
 
   challenges-service:
     build: ./challenges-service
-    container_name: challenges-service
+    image: rmp-backend-challenges-service
     depends_on:
       - psql_challenges
       - kafka
@@ -155,7 +149,7 @@ services:
 
   club-service:
     build: ./club-service
-    container_name: club-service
+    image: rmp-backend-club-service
     depends_on:
       - psql_clubs
       - kafka
@@ -177,7 +171,7 @@ services:
     # Internal
   payment-service:
     build: ./payment-service
-    container_name: payment-service
+    image: rmp-backend-payment-service
     depends_on:
       - kafka
     expose:
@@ -191,7 +185,7 @@ services:
 
   stats-service:
     build: ./stats-service
-    container_name: stats-service
+    image: rmp-backend-stats-service
     depends_on:
       - kafka
     expose:
@@ -205,7 +199,7 @@ services:
 
   gamification-service:
     build: ./gamification-service
-    container_name: gamification-service
+    image: rmp-backend-gamification-service
     depends_on:
       - kafka
     expose:
@@ -219,7 +213,7 @@ services:
 
   log-service:
     build: ./log-service
-    container_name: log-service
+    image: rmp-backend-log-service
     depends_on:
       - clickhouse
       - kafka
