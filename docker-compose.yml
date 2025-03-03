@@ -50,25 +50,26 @@ services:
       - backend_net
 
   # Kafka
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      # Format: <nodeId>@<host>:<port>
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_LOG_DIRS: /kafka/kraft
-    volumes:
-      - kafka_data:/kafka/kraft
-    ports:
-      - "9092:9092"
-    networks:
-      - backend_net
+#  kafka:
+#    image: confluentinc/cp-kafka:latest
+#    environment:
+#      CLUSTER_ID: 57e2fe15-99cf-4721-afdf-c971d264472b
+#      KAFKA_BROKER_ID: 1
+#      KAFKA_PROCESS_ROLES: broker,controller
+#      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+#      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+#      # Format: <nodeId>@<host>:<port>
+#      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9092
+#      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+#      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+#      KAFKA_LOG_DIRS: /kafka/kraft
+#    volumes:
+#      - kafka_data:/kafka/kraft
+#    ports:
+#      - "9092:9092"
+#    networks:
+#      - backend_net
 
   # Microservices
     # Externally exposed
