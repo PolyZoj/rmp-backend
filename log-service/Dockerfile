@@ -4,7 +4,9 @@ WORKDIR /app
 COPY gradlew .
 COPY gradle gradle
 COPY build.gradle.kts settings.gradle.kts ./
-RUN chmod +x gradlew && ./gradlew --no-daemon dependencies
+
+RUN --mount=type=cache,target=/home/gradle/.gradle,sharing=private \
+    chmod +x gradlew && ./gradlew --no-daemon dependencies
 
 COPY src ./src
 RUN ./gradlew shadowJar -x test --no-daemon
