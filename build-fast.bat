@@ -53,6 +53,19 @@ for /f "tokens=*" %%i in ('docker ps -a --filter "name=rmp-backend" -q') do (
     docker rm -f %%i >nul 2>nul
 )
 
+REM Проверка и удаление сети проекта для избежания ошибок сети
+echo Проверяем и удаляем сеть проекта...
+docker network ls | find "backend_net" > nul
+if %ERRORLEVEL% EQU 0 (
+    docker network rm backend_net >nul 2>nul
+    if %ERRORLEVEL% NEQ 0 (
+        echo [ПРЕДУПРЕЖДЕНИЕ] Не удалось удалить сеть backend_net, пробуем принудительно удалить контейнеры
+        docker ps -a --filter "network=backend_net" -q | docker rm -f >nul 2>nul
+        docker network rm backend_net >nul 2>nul
+    )
+    timeout /t 3 >nul
+)
+
 echo.
 echo [2/4] Подготовка к сборке...
 echo.
