@@ -166,7 +166,7 @@ services:
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 1
+      replicas: 3
       resources:
         limits:
           cpus: "0.50"

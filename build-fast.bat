@@ -2,6 +2,13 @@
 chcp 65001 > nul
 setlocal EnableDelayedExpansion
 
+REM Обработка параметров командной строки
+set CLEAN_ALL=0
+if "%1"=="--full-clean" (
+    set CLEAN_ALL=1
+    echo Запускается сборка с полной очисткой...
+)
+
 echo ============================================
 echo Запуск оптимизированной сборки проекта
 echo ============================================
@@ -27,64 +34,69 @@ if %ERRORLEVEL% NEQ 0 (
 REM Установка переменных окружения для ускорения сборки
 set DOCKER_BUILDKIT=1
 set COMPOSE_DOCKER_CLI_BUILD=1
+set COMPOSE_HTTP_TIMEOUT=300
 
 echo.
-echo [1/5] Очистка контейнеров проекта...
+echo [1/4] Очистка контейнеров...
 echo.
 
-REM Остановка контейнеров проекта
+REM Останавливаем контейнеры проекта
 echo Останавливаем контейнеры проекта...
 docker-compose down --remove-orphans
 if %ERRORLEVEL% NEQ 0 (
     echo [ПРЕДУПРЕЖДЕНИЕ] Не удалось остановить предыдущие контейнеры
 )
 
-REM Удаление только контейнеров проекта
-echo Удаляем контейнеры проекта...
+REM Удаление оставшихся контейнеров
 for /f "tokens=*" %%i in ('docker ps -a --filter "name=rmp-backend" -q') do (
-    docker rm -f %%i
+    echo Удаляем оставшиеся контейнеры...
+    docker rm -f %%i >nul 2>nul
 )
 
 echo.
-echo [2/5] Очистка образов проекта...
+echo [2/4] Подготовка к сборке...
 echo.
 
-REM Удаление только образов проекта
-echo Удаляем образы проекта...
-for /f "tokens=*" %%i in ('docker images --filter "label=com.docker.compose.project=rmp-backend" -q') do (
-    docker rmi -f %%i
-)
-
-echo.
-echo [3/5] Проверка портов проекта...
-echo.
-
-REM Проверка и освобождение портов проекта
-for /l %%p in (9080,1,9090) do (
-    netstat -ano ^| find "%%p" >nul
-    if !ERRORLEVEL! EQU 0 (
-        echo Порт %%p занят. Пытаемся освободить...
-        for /f "tokens=5" %%a in ('netstat -aon ^| find "%%p"') do (
-            taskkill /F /PID %%a >nul 2>nul
-        )
-        timeout /t 2 >nul
+REM Полная очистка, если запрошена
+if %CLEAN_ALL%==1 (
+    echo Удаляем все образы проекта...
+    for /f "tokens=*" %%i in ('docker images --filter "label=com.docker.compose.project=rmp-backend" -q') do (
+        docker rmi -f %%i >nul 2>nul
     )
+) else (
+    echo Используем кэширование для ускорения сборки...
+)
+
+REM Создаем .dockerignore для оптимизации
+if not exist ".dockerignore" (
+    echo Создаем .dockerignore файл...
+    echo .git> .dockerignore
+    echo .idea>> .dockerignore
+    echo .vscode>> .dockerignore
+    echo */build>> .dockerignore
+    echo */.gradle>> .dockerignore
 )
 
 echo.
-echo [4/5] Сборка проекта с использованием кэша...
+echo [3/4] Сборка проекта...
 echo.
 
-REM Сборка проекта с использованием кэша
-docker-compose build --parallel
+REM Сборка проекта
+echo Запускаем сборку (это может занять некоторое время)...
+if %CLEAN_ALL%==1 (
+    docker-compose build --parallel --no-cache
+) else (
+    docker-compose build --parallel
+)
+
 if %ERRORLEVEL% NEQ 0 (
-    echo [ОШИБКА] Сборка не удалась
+    echo [ОШИБКА] Сборка не удалась!
     pause
     exit /b 1
 )
 
 echo.
-echo [5/5] Запуск сервисов...
+echo [4/4] Запуск сервисов...
 echo.
 
 REM Запуск сервисов
@@ -103,9 +115,10 @@ echo.
 echo Полезные команды:
 echo - docker-compose logs -f    ^| Просмотр логов всех сервисов
 echo - docker-compose ps         ^| Список запущенных контейнеров
-echo - docker stats             ^| Мониторинг ресурсов контейнеров
+echo - docker stats              ^| Мониторинг ресурсов
 echo.
-echo Для разработки используйте:
-echo docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+echo Для разработки:
+echo - .\build-fast.bat                 ^| Обычная сборка
+echo - .\build-fast.bat --full-clean    ^| Полная пересборка
 echo.
 pause 
