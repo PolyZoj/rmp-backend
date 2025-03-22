@@ -166,7 +166,7 @@ services:
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -192,7 +192,7 @@ services:
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -212,7 +212,7 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -238,7 +238,7 @@ services:
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -264,7 +264,7 @@ services:
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -281,12 +281,10 @@ services:
     image: rmp-backend-payment-service
     depends_on:
       - kafka
-    expose:
-      - "8080"
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -300,13 +298,14 @@ services:
         <<: *build-args
     image: rmp-backend-stats-service
     depends_on:
+      - clickhouse
       - kafka
-    expose:
-      - "8080"
     environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -321,12 +320,10 @@ services:
     image: rmp-backend-gamification-service
     depends_on:
       - kafka
-    expose:
-      - "8080"
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
@@ -342,26 +339,17 @@ services:
     depends_on:
       - clickhouse
       - kafka
-    expose:
-      - "8080"
     environment:
       - CLICKHOUSE_HOST=clickhouse
       - CLICKHOUSE_PORT=8123
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     deploy:
-      replicas: 3
+      replicas: 1
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
     <<: *microservice-common
-
-networks:
-  backend_net:
-    driver: bridge
-    labels:
-      - "com.docker.compose.project=rmp-backend"
-      - "com.docker.compose.network=backend_net"
 
 volumes:
   psql_users_data:
@@ -384,3 +372,10 @@ volumes:
     labels:
       - "com.docker.compose.project=rmp-backend"
       - "com.docker.compose.volume=kafka_data"
+
+networks:
+  backend_net:
+    driver: bridge
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.network=backend_net"
