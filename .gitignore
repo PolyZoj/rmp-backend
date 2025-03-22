@@ -31,14 +31,14 @@
 .idea/vcs.xml
 
 # Gradle and Maven with auto-import
-# .idea/artifacts
-# .idea/compiler.xml
-# .idea/jarRepositories.xml
-# .idea/modules.xml
-# .idea/*.iml
-# .idea/modules
-# *.iml
-# *.ipr
+.idea/artifacts
+.idea/compiler.xml
+.idea/jarRepositories.xml
+.idea/modules.xml
+.idea/*.iml
+.idea/modules
+*.iml
+*.ipr
 
 # Build and IDE
 cmake-build-*/
@@ -58,3 +58,5 @@ fabric.properties
 **/gradlew.bat
 **/gradle/wrapper/gradle-wrapper.jar
 **/gradle/wrapper/gradle-wrapper.properties
+**/gradle/wrapper/
+
