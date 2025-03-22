@@ -33,6 +33,18 @@ docker-compose down --remove-orphans
 echo "Удаляем контейнеры проекта..."
 docker ps -a --filter "name=rmp-backend" -q | xargs -r docker rm -f
 
+# Проверка и удаление сети проекта
+echo "Проверяем и удаляем сеть проекта..."
+if docker network ls | grep -q "backend_net"; then
+    if ! docker network rm backend_net &>/dev/null; then
+        echo "Принудительное удаление контейнеров, подключенных к сети..."
+        docker ps -a --filter "network=backend_net" -q | xargs -r docker rm -f &>/dev/null
+        docker network rm backend_net &>/dev/null
+    fi
+    # Добавляем задержку, чтобы сеть успела полностью очиститься
+    sleep 3
+fi
+
 echo
 echo "[2/5] Очистка образов проекта..."
 echo
