@@ -11,7 +11,10 @@ x-build-args: &build-args
 x-microservice-dev-common: &microservice-dev-common
   # Монтируем локальный Gradle кэш для ускорения разработки
   volumes:
-    - ~/.gradle:/home/gradle/.gradle
+    - type: bind
+      source: ~/.gradle
+      target: /home/gradle/.gradle
+      read_only: true
   # Для режима разработки уменьшаем количество реплик до 1
   deploy:
     replicas: 1
@@ -22,6 +25,9 @@ x-microservice-dev-common: &microservice-dev-common
   # Добавляем горячую перезагрузку через объем для исходного кода
   environment:
     - SPRING_PROFILES_ACTIVE=dev
+  labels:
+    - "com.docker.compose.project=rmp-backend"
+    - "com.docker.compose.environment=dev"
 
 services:
   # Публичные сервисы

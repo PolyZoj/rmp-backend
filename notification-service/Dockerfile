@@ -5,7 +5,15 @@ COPY gradlew .
 COPY gradle gradle
 COPY build.gradle.kts settings.gradle.kts ./
 
-RUN echo 'tasks.register("downloadDependencies") { doLast { configurations.all { resolve() } } }' >> build.gradle.kts
+RUN echo 'tasks.register("downloadDependencies") { \
+              doLast { \
+                  configurations \
+                      .filter { it.isCanBeResolved } \
+                      .forEach { configuration -> \
+                          configuration.resolve() \
+                      } \
+              } \
+          }' >> build.gradle.kts
 
 RUN --mount=type=cache,target=/home/gradle/.gradle,sharing=private \
     --mount=type=cache,target=/root/.gradle,sharing=private \
