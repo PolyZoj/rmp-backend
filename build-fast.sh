@@ -7,9 +7,12 @@ export COMPOSE_DOCKER_CLI_BUILD=1
 
 echo "Начинаем оптимизированную сборку проекта..."
 
-# Опционально - очистка предыдущих сборок для полной пересборки
-# docker-compose down -v
-# docker system prune -f
+# Очистка только контейнеров и томов текущего проекта
+echo "Очистка предыдущих контейнеров проекта..."
+docker-compose down
+
+echo "Очистка неиспользуемых томов проекта..."
+docker volume prune -f --filter "label=com.docker.compose.project=rmp-backend"
 
 echo "Запускаем параллельную сборку микросервисов..."
 docker-compose build --parallel

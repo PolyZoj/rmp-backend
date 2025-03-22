@@ -9,6 +9,8 @@ x-microservice-common: &microservice-common
   restart: on-failure
   networks:
     - backend_net
+  labels:
+    - "com.docker.compose.project=rmp-backend"
 
 services:
   # Databases
@@ -19,7 +21,11 @@ services:
       - POSTGRES_USER=${DB_USER:-postgres}
       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
     volumes:
-      - psql_users_data:/var/lib/postgresql/data
+      - type: volume
+        source: psql_users_data
+        target: /var/lib/postgresql/data
+        volume:
+          nocopy: true
     ports:
       - "5433:5432"
     healthcheck:
@@ -34,6 +40,9 @@ services:
       restart_policy:
         condition: on-failure
         max_attempts: 10
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.service=psql_users"
 
   psql_clubs:
     image: postgres:alpine
@@ -350,10 +359,28 @@ services:
 networks:
   backend_net:
     driver: bridge
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.network=backend_net"
 
 volumes:
   psql_users_data:
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.volume=psql_users_data"
   psql_clubs_data:
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.volume=psql_clubs_data"
   psql_challenges_data:
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.volume=psql_challenges_data"
   clickhouse_data:
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.volume=clickhouse_data"
   kafka_data:
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.volume=kafka_data"

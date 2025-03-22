@@ -29,17 +29,17 @@ set DOCKER_BUILDKIT=1
 set COMPOSE_DOCKER_CLI_BUILD=1
 
 echo.
-echo [1/4] Очистка предыдущих контейнеров...
+echo [1/4] Очистка предыдущих контейнеров проекта...
 docker-compose down
 if %ERRORLEVEL% NEQ 0 (
     echo [ПРЕДУПРЕЖДЕНИЕ] Не удалось остановить предыдущие контейнеры
 )
 
 echo.
-echo [2/4] Очистка неиспользуемых ресурсов Docker...
-docker system prune -f
+echo [2/4] Очистка неиспользуемых томов проекта...
+docker volume prune -f --filter "label=com.docker.compose.project=rmp-backend"
 if %ERRORLEVEL% NEQ 0 (
-    echo [ПРЕДУПРЕЖДЕНИЕ] Не удалось очистить неиспользуемые ресурсы
+    echo [ПРЕДУПРЕЖДЕНИЕ] Не удалось очистить неиспользуемые тома проекта
 )
 
 echo.
