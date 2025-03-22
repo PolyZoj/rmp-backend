@@ -1,3 +1,14 @@
+version: '3.8'
+
+x-build-args: &build-args
+  BUILDKIT_INLINE_CACHE: 1
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+x-microservice-common: &microservice-common
+  restart: on-failure
+  networks:
+    - backend_net
 
 services:
   # Databases
@@ -96,6 +107,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "22181:2181"
+    <<: *microservice-common
+    
   kafka:
     image: confluentinc/cp-kafka:7.4.4
     hostname: kafka
@@ -116,17 +129,20 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+    <<: *microservice-common
     deploy:
       restart_policy:
         condition: on-failure
         max_attempts: 10
 
-
   # Microservices
     # Externally exposed
 
   auth-service:
-    build: ./auth-service
+    build:
+      context: ./auth-service
+      args:
+        <<: *build-args
     image: rmp-backend-auth-service
     depends_on:
       - psql_users
@@ -140,17 +156,19 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   user-service:
-    build: ./user-service
+    build:
+      context: ./user-service
+      args:
+        <<: *build-args
     image: rmp-backend-user-service
     depends_on:
       - psql_users
@@ -164,17 +182,19 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   notification-service:
-    build: ./notification-service
+    build:
+      context: ./notification-service
+      args:
+        <<: *build-args
     image: rmp-backend-notification-service
     depends_on:
       - kafka
@@ -182,17 +202,19 @@ services:
       - "8083:8080"
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   challenges-service:
-    build: ./challenges-service
+    build: 
+      context: ./challenges-service
+      args:
+        <<: *build-args
     image: rmp-backend-challenges-service
     depends_on:
       - psql_challenges
@@ -206,23 +228,25 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   club-service:
-    build: ./club-service
+    build:
+      context: ./club-service
+      args:
+        <<: *build-args
     image: rmp-backend-club-service
     depends_on:
       - psql_clubs
       - kafka
     ports:
-      - "8085:8080"
+      - "9085:8080"
     environment:
       - DB_HOST=psql_clubs
       - DB_PORT=5432
@@ -230,19 +254,21 @@ services:
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   # Microservices
     # Internal
   payment-service:
-    build: ./payment-service
+    build:
+      context: ./payment-service
+      args:
+        <<: *build-args
     image: rmp-backend-payment-service
     depends_on:
       - kafka
@@ -250,17 +276,19 @@ services:
       - "8080"
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   stats-service:
-    build: ./stats-service
+    build:
+      context: ./stats-service
+      args:
+        <<: *build-args
     image: rmp-backend-stats-service
     depends_on:
       - kafka
@@ -268,17 +296,19 @@ services:
       - "8080"
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   gamification-service:
-    build: ./gamification-service
+    build:
+      context: ./gamification-service
+      args:
+        <<: *build-args
     image: rmp-backend-gamification-service
     depends_on:
       - kafka
@@ -286,17 +316,19 @@ services:
       - "8080"
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
   log-service:
-    build: ./log-service
+    build:
+      context: ./log-service
+      args:
+        <<: *build-args
     image: rmp-backend-log-service
     depends_on:
       - clickhouse
@@ -307,17 +339,17 @@ services:
       - CLICKHOUSE_HOST=clickhouse
       - CLICKHOUSE_PORT=8123
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
     deploy:
       replicas: 3
       resources:
         limits:
           cpus: "0.50"
           memory: 512M
+    <<: *microservice-common
 
 networks:
   backend_net:
+    driver: bridge
 
 volumes:
   psql_users_data:
