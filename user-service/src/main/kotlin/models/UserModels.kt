@@ -78,7 +78,7 @@ data class UserParametersDTO(
     @SerialName("birth_date") val birthDate: String,
     @SerialName("unit_system_id") val unitSystemId: Int
 ) {
-    // Вычисляемое свойство для ИМТ (JDK 21 pattern matching for switch)
+    // Вычисляемое свойство для ИМТ 
     fun getBMI(): Double = when (height) {
         0 -> 0.0 // Защита от деления на ноль
         else -> weight * 10000.0 / (height * height)
