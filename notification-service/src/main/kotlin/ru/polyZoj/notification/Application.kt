@@ -1,4 +1,4 @@
-package ru.polyZoj
+package ru.polyZoj.notification
 
 import io.ktor.server.application.*
 
