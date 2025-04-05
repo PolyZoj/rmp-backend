@@ -1,5 +1,6 @@
 
 plugins {
+    application
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.ktor)
     id("org.jetbrains.kotlin.plugin.serialization") version "1.8.21"

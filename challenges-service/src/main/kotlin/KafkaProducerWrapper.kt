@@ -4,10 +4,6 @@ import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
 import java.util.Properties
 
-/**
- * Обёртка для работы с Kafka Producer.
- * Здесь реализована базовая инициализация и метод для отправки сообщений.
- */
 object KafkaProducerWrapper {
     private lateinit var producer: KafkaProducer<String, String>
 
@@ -16,6 +12,9 @@ object KafkaProducerWrapper {
             put("bootstrap.servers", "localhost:9092")
             put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
             put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+            // For reliability
+            put("acks", "all")
+            put("retries", 3)
         }
         producer = KafkaProducer(props)
     }

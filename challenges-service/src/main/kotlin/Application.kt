@@ -13,13 +13,30 @@ fun main() {
 }
 
 fun Application.module() {
+    // 1) Initialize DB
+    DatabaseFactory.init()
+
+    // 2) Install ContentNegotiation for JSON
     install(ContentNegotiation) {
-        json(Json {
-            prettyPrint = true
-            isLenient = true
-            ignoreUnknownKeys = true
-        })
+        json(
+            Json {
+                prettyPrint = true
+                isLenient = true
+                ignoreUnknownKeys = true
+            }
+        )
     }
-    configureRouting()
+
+    // 3) Initialize Kafka Producer
     KafkaProducerWrapper.initialize()
+
+    // 4) Start Kafka Consumer as a background worker (or as a separate service)
+    install(KafkaConsumerWorker) {
+        bootstrapServers = "localhost:9092"
+        groupId = "challenge-service-group"
+        topic = "stats.user-activity"  // The stats service publishes user activity here
+    }
+
+    // 5) Configure HTTP Routing
+    configureRouting()
 }
