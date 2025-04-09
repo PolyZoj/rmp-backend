@@ -1,16 +1,15 @@
-FROM gradle:8-jdk21 AS builder
+FROM openjdk:17-jdk-alpine
+
+RUN apk add --no-cache bash
+
 WORKDIR /app
 
-COPY gradlew .
-COPY gradle gradle
-COPY build.gradle.kts settings.gradle.kts ./
-RUN chmod +x gradlew && ./gradlew --no-daemon dependencies
+COPY . .
 
-COPY src ./src
-RUN ./gradlew shadowJar -x test --no-daemon
+COPY --from=gradle:7.3-jdk17 /usr/local /usr/local
 
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-COPY --from=builder /app/build/libs/*.jar app.jar
+RUN ./gradlew build
+
+ENTRYPOINT ["./gradlew", "run"]
+
 EXPOSE 8080
-CMD ["java", "-jar", "app.jar"]
