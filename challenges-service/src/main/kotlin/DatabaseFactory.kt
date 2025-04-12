@@ -9,17 +9,25 @@ import ru.polyZoj.repositories.ChallengeRewardsTable
 
 object DatabaseFactory {
     fun init() {
-        // Connect to DB (adjust the URL, user, password)
+        val host = System.getenv("DB_HOST") ?: "localhost"
+        val port = System.getenv("DB_PORT") ?: "5432"
+        val dbName = System.getenv("DB_NAME") ?: "challenges_db"
+        val user = System.getenv("DB_USER") ?: "postgres"
+        val password = System.getenv("DB_PASSWORD") ?: "postgres"
+
+        val dbUrl = "jdbc:postgresql://$host:$port/$dbName"
+
         Database.connect(
-            url = "jdbc:postgresql://localhost:5432/challengesdb",
+            url = dbUrl,
             driver = "org.postgresql.Driver",
-            user = "postgres",
-            password = "postgres"
+            user = user,
+            password = password
         )
 
-        // Create tables if they do not exist (for demo)
+        // Create tables if they do not exist
         transaction {
             SchemaUtils.create(ChallengesTable, UserChallengesTable, ChallengeRewardsTable)
         }
     }
 }
+

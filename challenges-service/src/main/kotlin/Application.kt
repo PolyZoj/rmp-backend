@@ -6,6 +6,7 @@ import io.ktor.server.application.*
 import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
+import ru.polyZoj.routing.configureRouting
 
 
 fun main() {
@@ -29,13 +30,6 @@ fun Application.module() {
 
     // 3) Initialize Kafka Producer
     KafkaProducerWrapper.initialize()
-
-    // 4) Start Kafka Consumer as a background worker (or as a separate service)
-    install(KafkaConsumerWorker) {
-        bootstrapServers = "localhost:9092"
-        groupId = "challenge-service-group"
-        topic = "stats.user-activity"  // The stats service publishes user activity here
-    }
 
     // 5) Configure HTTP Routing
     configureRouting()

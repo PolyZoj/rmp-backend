@@ -5,7 +5,7 @@ import java.time.ZonedDateTime
 
 @Serializable
 data class Challenge(
-    val challengeId: Long,
+    val challengeId: Int,
     val challengeType: String, // daily, weekly, seasonal, team, user_created
     val title: String,
     val description: String,
@@ -21,8 +21,8 @@ data class Challenge(
 
 @Serializable
 data class UserChallengeProgress(
-    val challengeId: Long,
-    val userId: Long,
+    val challengeId: Int,
+    val userId: Int,
     val progressValue: Int,
     @Serializable(with = ZonedDateTimeSerializer::class)
     val completedAt: ZonedDateTime? = null,
@@ -31,8 +31,8 @@ data class UserChallengeProgress(
 
 @Serializable
 data class ChallengeReward(
-    val rewardId: Long,
-    val challengeId: Long,
+    val rewardId: Int,
+    val challengeId: Int,
     val rewardType: String,    // XP, медаль и т.п.
     val rewardValue: Int
 )

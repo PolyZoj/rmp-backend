@@ -9,7 +9,7 @@ object KafkaProducerWrapper {
 
     fun initialize() {
         val props = Properties().apply {
-            put("bootstrap.servers", "localhost:9092")
+            put("bootstrap.servers", "kafka:9092")
             put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
             put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
             // For reliability
