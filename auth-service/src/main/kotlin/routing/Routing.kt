@@ -16,43 +16,56 @@ import ru.polyZog.repositories.UserDataSource
 import java.util.*
 import kotlin.random.Random
 
+import io.ktor.server.application.*
+import io.ktor.server.routing.*
+import io.ktor.server.response.*
+import io.ktor.server.request.*
+import io.ktor.http.*
+import kotlinx.serialization.json.Json
+
 val redisCommands: RedisCommands<String, String> = RedisClient.create("redis://redis:6379").connect().sync()
 
-fun Routing.configureRoutes() {
-    post("/register") {
-        val request = call.receive<RegisterRequest>()
-        try {
-            val newUser = User(
-                id = UserDataSource.generateUserId(),
-                username = request.username,
-                password = request.password
-            )
-            UserDataSource.addUser(newUser)
-            call.respond(HttpStatusCode.Created, mapOf("message" to "User created"))
-        } catch (e: IllegalArgumentException) {
-            call.respond(HttpStatusCode.Conflict, mapOf("error" to e.message))
+
+fun Application.configureRouting() {
+    routing {
+        route("/api/v1/auth") {
+
+            post("/register") {
+                val request = call.receive<RegisterRequest>()
+
+                try {
+                    val newUser = User(
+                        id = UserDataSource.generateUserId(),
+                        username = request.username,
+                        password = request.password
+                    )
+                    UserDataSource.addUser(newUser)
+                    call.respond(HttpStatusCode.Created, mapOf("message" to "User created"))
+                } catch (e: IllegalArgumentException) {
+                    call.respond(HttpStatusCode.Conflict, mapOf("error" to e.message))
+                }
+            }
+        
+            post("/login") {
+                val request = call.receive<LoginRequest>()
+                val user = UserDataSource.findUserByUsername(request.username)
+        
+                if (user == null || user.password != request.password) {
+                    call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Invalid credentials"))
+                    return@post
+                }
+        
+                val token = JWT.create()
+                    .withAudience("jwt-audience")
+                    .withIssuer("https://jwt-provider-domain/")
+                    .withClaim("userId", user.id)
+                    .withExpiresAt(Date(System.currentTimeMillis() + 600000))
+                    .sign(Algorithm.HMAC256("secret"))
+        
+                redisCommands.setex("user:${user.id}:token", 600, token)
+        
+                call.respond(HttpStatusCode.OK, TokenResponse(token))
+            }
         }
     }
-
-    post("/login") {
-        val request = call.receive<LoginRequest>()
-        val user = UserDataSource.findUserByUsername(request.username)
-
-        if (user == null || user.password != request.password) {
-            call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Invalid credentials"))
-            return@post
-        }
-
-        val token = JWT.create()
-            .withAudience("jwt-audience")
-            .withIssuer("https://jwt-provider-domain/")
-            .withClaim("userId", user.id)
-            .withExpiresAt(Date(System.currentTimeMillis() + 600000))
-            .sign(Algorithm.HMAC256("secret"))
-
-        redisCommands.setex("user:${user.id}:token", 600, token)
-
-        call.respond(HttpStatusCode.OK, TokenResponse(token))
-    }
-
 }

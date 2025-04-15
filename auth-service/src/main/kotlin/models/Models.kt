@@ -1,6 +1,8 @@
 package ru.polyZog.models
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
 
 @Serializable
 data class RegisterRequest(val username: String, val password: String)

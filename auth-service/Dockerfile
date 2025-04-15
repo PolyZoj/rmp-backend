@@ -1,15 +1,30 @@
-FROM openjdk:17-jdk-alpine
-
-RUN apk add --no-cache bash
-
+FROM gradle:8-jdk21-alpine AS builder
 WORKDIR /app
 
-COPY . .
+COPY gradle gradle
+COPY build.gradle.kts settings.gradle.kts ./
 
-COPY --from=gradle:7.3-jdk17 /usr/local /usr/local
+RUN echo 'tasks.register("downloadDependencies") { \
+              doLast { \
+                  configurations \
+                      .filter { it.isCanBeResolved } \
+                      .forEach { configuration -> \
+                          configuration.resolve() \
+                      } \
+              } \
+          }' >> build.gradle.kts
 
-RUN ./gradlew build
+RUN --mount=type=cache,target=/home/gradle/.gradle,sharing=private \
+    --mount=type=cache,target=/root/.gradle,sharing=private \
+    gradle --no-daemon downloadDependencies
 
-ENTRYPOINT ["./gradlew", "run"]
+COPY src ./src
+RUN --mount=type=cache,target=/home/gradle/.gradle,sharing=private \
+    --mount=type=cache,target=/root/.gradle,sharing=private \
+    gradle shadowJar -x test --no-daemon
 
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/build/libs/*.jar app.jar
 EXPOSE 8080
+CMD ["java", "-XX:+UseContainerSupport", "-XX:MaxRAMPercentage=75.0", "-jar", "app.jar"]

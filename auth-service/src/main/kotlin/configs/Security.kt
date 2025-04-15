@@ -34,10 +34,4 @@ fun Application.configureSecurity() {
             }
         }
     }
-    install(ContentNegotiation) {
-        json(Json {
-            prettyPrint = true
-            isLenient = true
-        })
-    }
 }
