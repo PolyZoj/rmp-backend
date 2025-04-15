@@ -14,10 +14,8 @@ fun main() {
 }
 
 fun Application.module() {
-    // 1) Initialize DB
     DatabaseFactory.init()
 
-    // 2) Install ContentNegotiation for JSON
     install(ContentNegotiation) {
         json(
             Json {
@@ -28,9 +26,7 @@ fun Application.module() {
         )
     }
 
-    // 3) Initialize Kafka Producer
     KafkaProducerWrapper.initialize()
 
-    // 5) Configure HTTP Routing
     configureRouting()
 }
