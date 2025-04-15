@@ -66,3 +66,4 @@ fabric.properties
 **/gradle/wrapper/gradle-wrapper.properties
 **/gradle/wrapper/
 
+.vscode/
