@@ -1,0 +1,30 @@
+# 1_000_000 ep
+# compose
+# ebites kak hotite
+
+
+``` Users ```
+— id [serial]
+— email [varchar(128)]
+- avatar_url [varchar(512)]
+— password [varchar(256)](encrypted)
+— is_admin [boolean]
+— username [varchar(128)]
+— first_name [varchar(64)]
+— last_name [varchar(64)]
+— date_of_birth [timestamp with time zone]
+— weight (kg) [float]
+— height (cm) [smallint]
+— primary_health_goal [enum(LOSE_WEIGHT, GAIN_MUSCLE, MAINTAIN_FITNESS)]
+— daily_step_goal (steps count) [integer]
+— water_instake_goal (mllitres) [integer]
+— callorie_goal (callories) [smallint]
+— workouts_count [smallint]
+— clubs (ids) [integer[]????]
+— created_at [timestamp with timezone]
+— updated_at [timestamp with timezone]
+
+
+``` Friends table ```
+— id_1 [serial]
+— id_2 [serial]
