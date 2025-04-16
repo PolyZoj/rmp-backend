@@ -1,5 +1,6 @@
 
 plugins {
+    kotlin("jvm") version "2.1.20"
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.ktor)
 }

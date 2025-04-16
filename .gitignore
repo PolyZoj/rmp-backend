@@ -46,7 +46,14 @@ out/
 .idea_modules/
 *.iws
 
-# Plugins
+# IntelliJ
+out/
+.vscode/
+
+# mpeltonen/sbt-idea plugin
+.idea_modules/
+
+# JIRA plugin
 atlassian-ide-plugin.xml
 com_crashlytics_export_strings.xml
 crashlytics.properties
@@ -59,3 +66,4 @@ fabric.properties
 **/gradle/wrapper/gradle-wrapper.properties
 **/gradle/wrapper/
 
+.vscode/
