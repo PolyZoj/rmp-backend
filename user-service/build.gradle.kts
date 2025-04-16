@@ -37,3 +37,13 @@ dependencies {
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)
 }
+
+tasks.register("downloadDependencies") {
+    doLast {
+        configurations
+        .filter { it.isCanBeResolved }
+        .forEach { configuration ->
+            configuration.resolve()
+        }
+    }
+}

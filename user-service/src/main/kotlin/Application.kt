@@ -1,11 +1,22 @@
 package ru.polyZog
 
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
+import io.ktor.server.routing.routing
+import ru.polyZog.kafka.KafkaConfig
+import ru.polyZog.kafka.KafkaConsumerService
+import ru.polyZog.kafka.KafkaProducerService
+import ru.polyZog.kafka.createKafkaConsumer
+import ru.polyZog.kafka.createKafkaProducer
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -22,5 +33,43 @@ fun Application.module() {
             }
         )
     }
-    configureRouting()
+//    configureRouting()
+
+//    val kafkaConfig = KafkaConfig()
+//    kafkaConfig.createTopicIfNotExists(
+//        topicName = "example-topic",
+//        numPartitions = 3,
+//        replicationFactor = 1
+//    )
+
+    val kafkaProducer = createKafkaProducer()
+    val producerService = KafkaProducerService(kafkaProducer)
+
+    val kafkaConsumer = createKafkaConsumer()
+    // List topics you want to consume from. (The topic should have multiple partitions if needed.)
+    val consumerTopics = listOf("auth-requests")
+    val consumerService = KafkaConsumerService(kafkaConsumer, consumerTopics)
+
+    // Start Kafka Consumer and define how each message should be processed.
+    consumerService.startConsuming { conversationId, message ->
+        println("Consumed message -> ConversationID: $conversationId, Message: $message")
+        // Additional message processing logic can be added here.
+    }
+
+//    routing {
+//        route("/api/v1/users") {
+//            get("/") {
+//                call.respondText("Hello World!")
+//            }
+//
+//            post("/produce") {
+//                val conversationId = call.request.queryParameters["conversationId"]
+//                    ?: return@post call.respondText("Missing conversationId query parameter", status = HttpStatusCode.BadRequest)
+//                val message = call.request.queryParameters["message"]
+//                    ?: return@post call.respondText("Missing message query parameter", status = HttpStatusCode.BadRequest)
+//                producerService.send("example-topic", conversationId, message)
+//                call.respondText("Message sent for conversationId = $conversationId", status = HttpStatusCode.OK)
+//            }
+//        }
+//    }
 }
