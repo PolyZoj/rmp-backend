@@ -1,22 +1,18 @@
 package ru.polyZog
 
-import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
-import io.ktor.server.response.respondText
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.server.routing.route
-import io.ktor.server.routing.routing
-import ru.polyZog.kafka.KafkaConfig
 import ru.polyZog.kafka.KafkaConsumerService
 import ru.polyZog.kafka.KafkaProducerService
 import ru.polyZog.kafka.createKafkaConsumer
 import ru.polyZog.kafka.createKafkaProducer
+import ru.polyZog.models.DataPayload
+import ru.polyZog.models.User
+import ru.polyZog.repositories.UserDataSource
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -53,7 +49,21 @@ fun Application.module() {
     // Start Kafka Consumer and define how each message should be processed.
     consumerService.startConsuming { conversationId, message ->
         println("Consumed message -> ConversationID: $conversationId, Message: $message")
-        // Additional message processing logic can be added here.
+
+        val data = Json.decodeFromString<DataPayload>(message)
+        val user = UserDataSource.findUserByUsername(data.params.firstOrNull() ?: "")
+
+        if (user != null) {
+            val message = DataPayload(user.id, listOf(""))
+            producerService.send("auth-responses", conversationId, Json.encodeToString(message))
+        } else {
+            val newUser = User(UserDataSource.generateUserId(), data.params.firstOrNull() ?: "", data.params.getOrNull(1)
+                ?: "")
+            UserDataSource.addUser(newUser)
+            val message = DataPayload(newUser.id, listOf(""))
+            producerService.send("auth-responses", conversationId, Json.encodeToString(message))
+        }
+
     }
 
 //    routing {
