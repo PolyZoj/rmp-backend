@@ -3,69 +3,143 @@ package ru.polyZog.routing
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.http.*
+import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.lettuce.core.RedisClient
-import io.lettuce.core.api.sync.RedisCommands
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import org.apache.kafka.clients.consumer.KafkaConsumer
+import org.apache.kafka.clients.producer.KafkaProducer
+import org.apache.kafka.clients.producer.ProducerRecord
 import ru.polyZog.models.LoginRequest
 import ru.polyZog.models.RegisterRequest
 import ru.polyZog.models.TokenResponse
 import ru.polyZog.models.User
 import ru.polyZog.repositories.UserDataSource
 import java.util.*
-import kotlin.random.Random
-
-import io.ktor.server.application.*
-import io.ktor.server.routing.*
-import io.ktor.server.response.*
-import io.ktor.server.request.*
-import io.ktor.http.*
-import kotlinx.serialization.json.Json
-
-val redisCommands: RedisCommands<String, String> = RedisClient.create("redis://redis:6379").connect().sync()
-
+import java.util.concurrent.ConcurrentHashMap
+import ru.polyZog.models.DataPayload
 
 fun Application.configureRouting() {
-    routing {
-        route("/api/v1/auth") {
+    val json = Json { ignoreUnknownKeys = true }
+    val producer = KafkaProducer<String, String>(kafkaConfig("auth-producer"))
+    val consumer = KafkaConsumer<String, String>(kafkaConfig("auth-consumer"))
+    val responses = ConcurrentHashMap<String, CompletableDeferred<String>>()
+    val mutex = Mutex()
 
-            post("/register") {
-                val request = call.receive<RegisterRequest>()
-
-                try {
-                    val newUser = User(
-                        id = UserDataSource.generateUserId(),
-                        username = request.username,
-                        password = request.password
-                    )
-                    UserDataSource.addUser(newUser)
-                    call.respond(HttpStatusCode.Created, mapOf("message" to "User created"))
-                } catch (e: IllegalArgumentException) {
-                    call.respond(HttpStatusCode.Conflict, mapOf("error" to e.message))
+    CoroutineScope(Dispatchers.IO).launch {
+        consumer.subscribe(listOf("auth-responses"))
+        while (true) {
+            val records = consumer.poll(java.time.Duration.ofMillis(100))
+            records.forEach { record ->
+                mutex.withLock {
+                    responses[record.key()]?.complete(record.value())
                 }
-            }
-        
-            post("/login") {
-                val request = call.receive<LoginRequest>()
-                val user = UserDataSource.findUserByUsername(request.username)
-        
-                if (user == null || user.password != request.password) {
-                    call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Invalid credentials"))
-                    return@post
-                }
-        
-                val token = JWT.create()
-                    .withAudience("jwt-audience")
-                    .withIssuer("https://jwt-provider-domain/")
-                    .withClaim("userId", user.id)
-                    .withExpiresAt(Date(System.currentTimeMillis() + 600000))
-                    .sign(Algorithm.HMAC256("secret"))
-        
-                redisCommands.setex("user:${user.id}:token", 600, token)
-        
-                call.respond(HttpStatusCode.OK, TokenResponse(token))
             }
         }
+    }
+
+    routing {
+        route("/api/v1/auth") {
+            post("/register") {
+                val request = call.receive<RegisterRequest>()
+                val payload = DataPayload(
+                    message = "register",
+                    params = listOf(request.username, request.password)
+                )
+                processAuthRequest(payload, call, producer, responses, mutex, json)
+            }
+
+            post("/login") {
+                val request = call.receive<LoginRequest>()
+                val payload = DataPayload(
+                    message = "login",
+                    params = listOf(request.username, request.password)
+                )
+                processAuthRequest(payload, call, producer, responses, mutex, json)
+            }
+        }
+    }
+}
+
+private suspend fun processAuthRequest(
+    payload: DataPayload,
+    call: ApplicationCall,
+    producer: KafkaProducer<String, String>,
+    responses: ConcurrentHashMap<String, CompletableDeferred<String>>,
+    mutex: Mutex,
+    json: Json
+) {
+    val correlationId = UUID.randomUUID().toString()
+    val responseDeferred = CompletableDeferred<String>()
+
+    mutex.withLock {
+        responses[correlationId] = responseDeferred
+    }
+
+    producer.send(ProducerRecord(
+        "auth-requests",
+        correlationId,
+        json.encodeToString(payload)
+    ))
+
+    try {
+        val result = withTimeoutOrNull(5000) { responseDeferred.await() }
+        when {
+            result == null -> call.respond(
+                HttpStatusCode.GatewayTimeout,
+                mapOf("error" to "Authentication service timeout")
+            )
+
+            result.startsWith("error:") -> call.respond(
+                HttpStatusCode.BadRequest,
+                mapOf("error" to result.removePrefix("error:"))
+            )
+
+            else -> handleSuccessfulResponse(payload.message, result, call)
+        }
+    } finally {
+        mutex.withLock { responses.remove(correlationId) }
+    }
+}
+
+suspend private fun handleSuccessfulResponse(
+    operation: String,
+    result: String,
+    call: ApplicationCall
+) {
+    when (operation) {
+        "register" -> call.respond(
+            HttpStatusCode.Created,
+            mapOf("message" to "User created successfully")
+        )
+
+        "login" -> call.respond(
+            HttpStatusCode.OK,
+            TokenResponse(token = result)
+        )
+
+        else -> call.respond(
+            HttpStatusCode.InternalServerError,
+            mapOf("error" to "Unknown operation type")
+        )
+    }
+}
+
+fun kafkaConfig(groupId: String): Properties {
+    return Properties().apply {
+        put("bootstrap.servers", "kafka:9092")
+        put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+        put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+        put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+        put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+        put("group.id", groupId)
+        put("auto.offset.reset", "earliest")
+        put("enable.auto.commit", "true")
+        put("max.poll.records", "100")
     }
 }
