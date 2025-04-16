@@ -15,3 +15,9 @@ data class User(val id: String, val username: String, val password: String)
 
 @Serializable
 data class TokenResponse(val token: String)
+
+@Serializable
+data class DataPayload(
+    val message: String,
+    val params: List<String>
+)
