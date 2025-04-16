@@ -44,7 +44,14 @@ fun Application.configureRouting() {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
                 mutex.withLock {
-                    responses[record.key()]?.complete(record.value())
+                    try {
+                        val responsePayload = json.decodeFromString<DataPayload>(record.value())
+                        responses[record.key()]?.complete(responsePayload.message)
+                    } catch (e: Exception) {
+                        responses[record.key()]?.complete(
+                            "error"
+                        )
+                    }
                 }
             }
         }
@@ -125,10 +132,13 @@ suspend private fun handleSuccessfulResponse(
             mapOf("message" to "User created successfully")
         )
 
-        "login" -> call.respond(
+        "login" -> {
+
+            call.respond(
             HttpStatusCode.OK,
             TokenResponse(token = result)
         )
+        }
 
         else -> call.respond(
             HttpStatusCode.InternalServerError,
