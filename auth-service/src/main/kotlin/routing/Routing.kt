@@ -23,6 +23,11 @@ import ru.polyZog.repositories.UserDataSource
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import ru.polyZog.models.DataPayload
+import org.apache.kafka.clients.admin.AdminClient
+import org.apache.kafka.clients.admin.NewTopic
+import org.apache.kafka.common.errors.TopicExistsException
+import java.util.concurrent.ExecutionException
+
 
 fun Application.configureRouting() {
     val json = Json { ignoreUnknownKeys = true }
@@ -30,6 +35,8 @@ fun Application.configureRouting() {
     val consumer = KafkaConsumer<String, String>(kafkaConfig("auth-consumer"))
     val responses = ConcurrentHashMap<String, CompletableDeferred<String>>()
     val mutex = Mutex()
+    
+    createKafkaTopics()
 
     CoroutineScope(Dispatchers.IO).launch {
         consumer.subscribe(listOf("auth-responses"))
@@ -141,5 +148,32 @@ fun kafkaConfig(groupId: String): Properties {
         put("auto.offset.reset", "earliest")
         put("enable.auto.commit", "true")
         put("max.poll.records", "100")
+    }
+}
+
+private fun Application.createKafkaTopics() {
+    val adminProps = Properties().apply {
+        put("bootstrap.servers", "kafka:9092")
+        put("client.id", "auth-service-admin")
+    }
+
+    val admin = AdminClient.create(adminProps)
+    
+    val topics = listOf(
+        NewTopic("auth-requests", 3, 1.toShort()),
+        NewTopic("auth-responses", 3, 1.toShort())
+    )
+
+    try {
+        admin.createTopics(topics).all().get()
+        log.info("Successfully created Kafka topics")
+    } catch (e: ExecutionException) {
+        if (e.cause is TopicExistsException) {
+            log.info("Kafka topics already exist")
+        } else {
+            log.error("Failed to create Kafka topics: ${e.message}")
+        }
+    } finally {
+        admin.close()
     }
 }
