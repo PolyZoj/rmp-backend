@@ -22,10 +22,14 @@ fun createKafkaProducer(): KafkaProducer<String, String> {
         put("bootstrap.servers", "kafka:9092")
         put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
         put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+
         put("acks", "all")
-        put("retries", "3")
-        put("linger.ms", "5")
-        // Additional tuning parameters can be added here.
+        put("enable.idempotence", "true")
+        put("max.in.flight.requests.per.connection", "1")
+
+        put("retries", "5")
+        put("linger.ms", "1")
+        put("delivery.timeout.ms", "120000")
     }
     return KafkaProducer(props)
 }

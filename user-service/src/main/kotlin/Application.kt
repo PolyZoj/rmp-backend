@@ -4,6 +4,7 @@ import io.ktor.server.application.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.config.ApplicationConfig
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 import ru.polyZog.kafka.KafkaConsumerService
@@ -13,12 +14,37 @@ import ru.polyZog.kafka.createKafkaProducer
 import ru.polyZog.models.DataPayload
 import ru.polyZog.models.User
 import ru.polyZog.repositories.UserDataSource
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
+import java.util.Date
+
+data class JwtConfig(
+    val secret: String,
+    val domain: String,
+    val audience: String,
+    val realm: String,
+    val expiresIn: Long = 3_600_000
+) {
+    companion object {
+        fun fromConfig(config: ApplicationConfig): JwtConfig {
+            return JwtConfig(
+                secret = config.property("jwt.secret").getString(),
+                domain = config.property("jwt.domain").getString(),
+                audience = config.property("jwt.audience").getString(),
+                realm = config.property("jwt.realm").getString(),
+                expiresIn = 3_600_000
+            )
+        }
+    }
+}
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
 fun Application.module() {
+
+    val jwtConfig = JwtConfig.fromConfig(environment.config)
 
     install(ContentNegotiation) {
         json(
@@ -42,11 +68,9 @@ fun Application.module() {
     val producerService = KafkaProducerService(kafkaProducer)
 
     val kafkaConsumer = createKafkaConsumer()
-    // List topics you want to consume from. (The topic should have multiple partitions if needed.)
     val consumerTopics = listOf("auth-requests")
     val consumerService = KafkaConsumerService(kafkaConsumer, consumerTopics)
 
-    // Start Kafka Consumer and define how each message should be processed.
     consumerService.startConsuming { conversationId, message ->
         println("Consumed message -> ConversationID: $conversationId, Message: $message")
 
@@ -54,13 +78,14 @@ fun Application.module() {
         val user = UserDataSource.findUserByUsername(data.params.firstOrNull() ?: "")
 
         if (user != null) {
-            val message = DataPayload(user.id, listOf(""))
+            val token = generateToken(user, jwtConfig)
+            val message = DataPayload(user.id, listOf(token))
             producerService.send("auth-responses", conversationId, Json.encodeToString(message))
         } else {
             val newUser = User(UserDataSource.generateUserId(), data.params.firstOrNull() ?: "", data.params.getOrNull(1)
                 ?: "")
             UserDataSource.addUser(newUser)
-            val message = DataPayload(newUser.id, listOf(""))
+            val message = DataPayload(newUser.id, listOf("Success register"))
             producerService.send("auth-responses", conversationId, Json.encodeToString(message))
         }
 
@@ -82,4 +107,14 @@ fun Application.module() {
 //            }
 //        }
 //    }
+}
+
+fun generateToken(user: User, config: JwtConfig): String {
+    return JWT.create()
+        .withSubject(user.id)
+        .withIssuer(config.domain)
+        .withAudience(config.audience)
+        .withClaim("username", user.username)
+        .withExpiresAt(Date(System.currentTimeMillis() + config.expiresIn))
+        .sign(Algorithm.HMAC256(config.secret))
 }

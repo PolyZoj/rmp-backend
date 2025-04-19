@@ -45,13 +45,20 @@ class KafkaConsumerService(
 
 fun createKafkaConsumer(): KafkaConsumer<String, String> {
     val props = Properties().apply {
-        put("bootstrap.servers", "kafka:9092")
-        put("group.id", "ktor-microservice-consumer-group")
+       put("bootstrap.servers", "kafka:9092")
         put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
         put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+
+        put("group.id", "user-service-consumer")
         put("auto.offset.reset", "earliest")
         put("enable.auto.commit", "false")
-        // Additional tuning parameters can be added here.
+
+        put("isolation.level", "read_committed")
+        put("max.poll.records", "50")
+
+        put("session.timeout.ms", "15000")
+        put("heartbeat.interval.ms", "5000")
+        put("max.poll.interval.ms", "300000")
     }
     return KafkaConsumer(props)
 }

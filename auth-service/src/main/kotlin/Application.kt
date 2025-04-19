@@ -11,12 +11,9 @@ import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 
-
 fun main(args: Array<String>) {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
-
-
 
 fun Application.module() {
     
@@ -29,7 +26,6 @@ fun Application.module() {
             }
         )
     }
-
 
     configureHTTP()
     configureSecurity()

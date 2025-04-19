@@ -220,6 +220,13 @@ services:
           cpus: "0.75"
           memory: 512M
 
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+    networks:
+      - backend_net
+
   user-service:
     build:
       context: ./user-service
@@ -227,8 +234,8 @@ services:
         <<: *build-args
     image: rmp-backend-user-service
     depends_on:
-      - psql_users
-      - psql_users_replica
+      #- psql_users
+      #- psql_users_replica
       - kafka
     expose:
       - "8080"
@@ -387,9 +394,9 @@ services:
     depends_on:
       - auth-service
       - user-service
-      - notification-service
-      - challenges-service
-      - club-service
+      #- notification-service
+      #- challenges-service
+      #- club-service
     networks:
       - backend_net
     <<: *microservice-common
