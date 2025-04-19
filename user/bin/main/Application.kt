@@ -21,5 +21,4 @@ fun Application.module() {
         })
     }
     configureRouting()
-    KafkaProducerWrapper.initialize()
 }

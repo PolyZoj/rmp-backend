@@ -19,7 +19,6 @@ import ru.polyZog.models.LoginRequest
 import ru.polyZog.models.RegisterRequest
 import ru.polyZog.models.TokenResponse
 import ru.polyZog.models.User
-import ru.polyZog.repositories.UserDataSource
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import ru.polyZog.models.DataPayload
@@ -27,13 +26,16 @@ import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.common.errors.TopicExistsException
 import java.util.concurrent.ExecutionException
+import io.lettuce.core.RedisClient
+import io.lettuce.core.api.sync.RedisCommands
 
+val redisCommands: RedisCommands<String, String> = RedisClient.create("redis://redis:6379").connect().sync()
 
 fun Application.configureRouting() {
     val json = Json { ignoreUnknownKeys = true }
-    val producer = KafkaProducer<String, String>(kafkaConfig("auth-producer"))
-    val consumer = KafkaConsumer<String, String>(kafkaConfig("auth-consumer"))
-    val responses = ConcurrentHashMap<String, CompletableDeferred<String>>()
+    val producer = KafkaProducer<String, String>(producerConfig())
+    val consumer = KafkaConsumer<String, String>(consumerConfig("auth-consumer"))
+    val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
     
     createKafkaTopics()
@@ -46,10 +48,10 @@ fun Application.configureRouting() {
                 mutex.withLock {
                     try {
                         val responsePayload = json.decodeFromString<DataPayload>(record.value())
-                        responses[record.key()]?.complete(responsePayload.message)
+                        responses[record.key()]?.complete(responsePayload)
                     } catch (e: Exception) {
                         responses[record.key()]?.complete(
-                            "error"
+                            DataPayload("error", listOf())
                         )
                     }
                 }
@@ -84,12 +86,12 @@ private suspend fun processAuthRequest(
     payload: DataPayload,
     call: ApplicationCall,
     producer: KafkaProducer<String, String>,
-    responses: ConcurrentHashMap<String, CompletableDeferred<String>>,
+    responses: ConcurrentHashMap<String, CompletableDeferred<DataPayload>>,
     mutex: Mutex,
     json: Json
 ) {
     val correlationId = UUID.randomUUID().toString()
-    val responseDeferred = CompletableDeferred<String>()
+    val responseDeferred = CompletableDeferred<DataPayload>()
 
     mutex.withLock {
         responses[correlationId] = responseDeferred
@@ -103,15 +105,16 @@ private suspend fun processAuthRequest(
 
     try {
         val result = withTimeoutOrNull(5000) { responseDeferred.await() }
+
         when {
             result == null -> call.respond(
                 HttpStatusCode.GatewayTimeout,
                 mapOf("error" to "Authentication service timeout")
             )
 
-            result.startsWith("error:") -> call.respond(
+            result.message.startsWith("error:") -> call.respond(
                 HttpStatusCode.BadRequest,
-                mapOf("error" to result.removePrefix("error:"))
+                mapOf("error" to result.message.removePrefix("error:"))
             )
 
             else -> handleSuccessfulResponse(payload.message, result, call)
@@ -123,20 +126,22 @@ private suspend fun processAuthRequest(
 
 suspend private fun handleSuccessfulResponse(
     operation: String,
-    result: String,
+    result: DataPayload,
     call: ApplicationCall
 ) {
     when (operation) {
         "register" -> call.respond(
-            HttpStatusCode.Created,
-            mapOf("message" to "User created successfully")
+            HttpStatusCode.OK,
+            TokenResponse(id = result.message ,token = result.params.get(0))
         )
 
         "login" -> {
 
+            redisCommands.setex(result.message, 600, result.params.get(0))
+
             call.respond(
             HttpStatusCode.OK,
-            TokenResponse(token = result)
+            TokenResponse(id = result.message ,token = result.params.get(0))
         )
         }
 
@@ -147,17 +152,39 @@ suspend private fun handleSuccessfulResponse(
     }
 }
 
-fun kafkaConfig(groupId: String): Properties {
+fun producerConfig(): Properties {
     return Properties().apply {
         put("bootstrap.servers", "kafka:9092")
         put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
         put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+
+        put("acks", "all")
+        put("enable.idempotence", "true")
+        put("max.in.flight.requests.per.connection", "1")
+
+        put("retries", "5")
+        put("linger.ms", "1")
+        put("delivery.timeout.ms", "120000")
+    }
+}
+
+fun consumerConfig(groupId: String): Properties {
+    return Properties().apply {
+        put("bootstrap.servers", "kafka:9092")
         put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
         put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+
         put("group.id", groupId)
         put("auto.offset.reset", "earliest")
-        put("enable.auto.commit", "true")
-        put("max.poll.records", "100")
+        put("enable.auto.commit", "false")
+
+        put("isolation.level", "read_committed")
+        put("max.poll.records", "50")
+
+        put("session.timeout.ms", "15000")
+        put("heartbeat.interval.ms", "5000")
+        put("max.poll.interval.ms", "300000")
+
     }
 }
 
@@ -170,8 +197,10 @@ private fun Application.createKafkaTopics() {
     val admin = AdminClient.create(adminProps)
     
     val topics = listOf(
-        NewTopic("auth-requests", 3, 1.toShort()),
-        NewTopic("auth-responses", 3, 1.toShort())
+        NewTopic("auth-requests", 1, 3.toShort())
+            .configs(mapOf("min.insync.replicas" to "2")),
+        NewTopic("auth-responses", 1, 3.toShort())
+            .configs(mapOf("min.insync.replicas" to "2"))
     )
 
     try {

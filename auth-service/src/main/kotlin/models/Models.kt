@@ -14,7 +14,7 @@ data class LoginRequest(val username: String, val password: String)
 data class User(val id: String, val username: String, val password: String)
 
 @Serializable
-data class TokenResponse(val token: String)
+data class TokenResponse(val id: String, val token: String)
 
 @Serializable
 data class DataPayload(
