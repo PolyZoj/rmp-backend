@@ -14,6 +14,7 @@ import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 // Создаем контекстный сериализатор для Any
@@ -39,11 +40,40 @@ object AnyToStringSerializer : KSerializer<Any> {
  */
 @Serializable
 data class User(
-    @SerialName("user_id") val userId: Int? = null,
+    @SerialName("user_id") val userId: Int,
     @SerialName("first_name") val firstName: String,
     @SerialName("last_name") val lastName: String,
     val email: String,
     @SerialName("created_at") val createdAt: String? = null
+)
+
+
+@Serializable
+data class UserDTO(
+    val id: Int, // [serial]
+    val first_name: String, // [varchar(64)]
+    val last_name: String, // [varchar(64)]
+
+    val email: String, // [varchar(128)]
+    val avatar_url: String, // [varchar(512)]
+    val password: String, // [varchar(256)](encrypted)
+    val is_admin: Boolean, // [boolean]
+    val username: String, // [varchar(128)]
+
+    @Serializable(with = ZonedDateTimeSerializer::class)
+    val date_of_birth: ZonedDateTime, // [timestamp with time zone]
+    val weight: Float, // (kg) [float]
+    val height: Short, // (cm) [smallint]
+    val primary_health_goal: PrimaryHealthGoal, // enum
+    val daily_step_goal: Int, // (steps count) [integer]
+    val water_intake_goal: Int, // (millilitres) [integer]
+    val calorie_goal: Short, // (calories) [smallint]
+    val workouts_count: Short, // [smallint]
+    val clubs: List<Int>, // (ids) [integer[]]
+    @Serializable(with = ZonedDateTimeSerializer::class)
+    val created_at: ZonedDateTime, // [timestamp with timezone]
+    @Serializable(with = ZonedDateTimeSerializer::class)
+    val updated_at: ZonedDateTime // [timestamp with timezone]
 )
 
 /**

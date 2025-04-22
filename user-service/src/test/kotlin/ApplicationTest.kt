@@ -1,4 +1,4 @@
-package ru.polyZog
+package ru.polyZoj
 
 import io.ktor.client.request.*
 import io.ktor.http.*

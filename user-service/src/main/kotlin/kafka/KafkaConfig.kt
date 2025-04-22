@@ -1,4 +1,4 @@
-package ru.polyZog.kafka
+package ru.polyZoj.kafka
 
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.NewTopic

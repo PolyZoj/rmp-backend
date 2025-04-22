@@ -1,4 +1,4 @@
-package ru.polyZog.kafka
+package ru.polyZoj.kafka
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

@@ -214,7 +214,6 @@ services:
       - JWT_SECRET=secret
     <<: *microservice-common
     deploy:
-      replicas: 3
       resources:
         limits:
           cpus: "0.75"
@@ -250,7 +249,6 @@ services:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     <<: *microservice-common
     deploy:
-      replicas: 3
       resources:
         limits:
           cpus: "0.75"

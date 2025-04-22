@@ -1,6 +1,6 @@
-package ru.polyZog.repositories
+package ru.polyZoj.repositories
 
-import ru.polyZog.models.User
+import ru.polyZoj.models.User
 import java.util.*
 
 object UserDataSource {
