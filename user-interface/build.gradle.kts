@@ -2,23 +2,10 @@ plugins {
     kotlin("jvm") version "1.9.22"
     kotlin("plugin.serialization") version "1.9.22"
     id("application")
-    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "ru.polyZoj"
 version = "0.0.1"
-
-// Настройка JVM Toolchain для Java на версию 21
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    }
-}
-
-// Настройка JVM Toolchain для Kotlin на версию 21
-kotlin {
-    jvmToolchain(21)
-}
 
 application {
     mainClass.set("io.ktor.server.netty.EngineMain")
@@ -74,19 +61,4 @@ dependencies {
     
     testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.9.22")
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    kotlinOptions {
-        jvmTarget = "21"
-        freeCompilerArgs += "-Xjvm-default=all"
-    }
-}
-
-tasks.shadowJar {
-    manifest {
-        attributes(mapOf("Main-Class" to application.mainClass.get()))
-    }
-    archiveBaseName.set("${project.name}-all")
-    mergeServiceFiles()
 }
