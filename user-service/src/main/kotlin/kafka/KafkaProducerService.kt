@@ -1,4 +1,4 @@
-package ru.polyZog.kafka
+package ru.polyZoj.kafka
 
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord

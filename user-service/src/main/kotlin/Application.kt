@@ -1,4 +1,4 @@
-package ru.polyZog
+package ru.polyZoj
 
 import io.ktor.server.application.*
 import io.ktor.server.engine.embeddedServer
@@ -7,12 +7,12 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.config.ApplicationConfig
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
-import ru.polyZog.kafka.KafkaConsumerService
-import ru.polyZog.kafka.KafkaProducerService
-import ru.polyZog.kafka.createKafkaConsumer
-import ru.polyZog.kafka.createKafkaProducer
-import ru.polyZog.models.DataPayload
-import ru.polyZog.models.User
+import ru.polyZoj.kafka.KafkaConsumerService
+import ru.polyZoj.kafka.KafkaProducerService
+import ru.polyZoj.kafka.createKafkaConsumer
+import ru.polyZoj.kafka.createKafkaProducer
+import ru.polyZoj.models.DataPayload
+import ru.polyZoj.models.User
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import com.auth0.jwt.JWT
@@ -82,7 +82,7 @@ fun Application.module() {
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
                     if (error != null || response.params.isEmpty()) {
-                        val msg = DataPayload("user-service", listOf("Invalid credentials"))
+                        val msg = DataPayload("error", listOf("Invalid credentials"))
                         producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
                         return@whenComplete
                     }

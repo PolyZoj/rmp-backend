@@ -1,4 +1,4 @@
-package ru.polyZog.models
+package ru.polyZoj.models
 
 import kotlinx.serialization.Serializable
 
