@@ -10,7 +10,7 @@ import org.jetbrains.exposed.sql.javatime.timestamp
 object Users : IntIdTable(name = "user", columnName = "user_id") {
     val firstName = varchar("first_name", 255)
     val lastName = varchar("last_name", 255)
-    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp())
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
 }
 
 // Таблица email пользователей

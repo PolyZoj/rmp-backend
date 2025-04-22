@@ -85,7 +85,11 @@ class UserRepository {
         logger.info("Успешно зарегистрирован новый пользователь с ID: $userId")
         userId
     }
-    
+
+    fun findByUsername(username: String): User? {
+        return null!!
+    }
+
     // Получение пользователя по ID
     suspend fun getUserById(userId: Int): UserResponse? = DatabaseFactory.dbReadQuery {
         val user = Users
