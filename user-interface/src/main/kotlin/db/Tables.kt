@@ -1,96 +1,76 @@
 package ru.polyZoj.db
 
 import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.javatime.datetime
+import org.jetbrains.exposed.sql.javatime.date
+import org.jetbrains.exposed.sql.javatime.timestamp
+import org.jetbrains.exposed.dao.id.IntIdTable
 
+/** “users” **/
+object UsersTable : IntIdTable("users", "user_id") {
+    val userId    = integer("user_id").autoIncrement()
+    val firstName = varchar("first_name", 100)
+    val lastName  = varchar("last_name", 100)
+    val email     = varchar("email", 255).uniqueIndex()
+    val avatarUrl = varchar("avatar_url", 255).nullable()
+    val isAdmin = bool("is_admin")
+    val createdAt = timestamp("created_at")
 
-object UsersTable : Table("users") {
-    val id         = integer("id").autoIncrement()
-    val firstName  = varchar("first_name", 64)
-    val lastName   = varchar("last_name", 64)
-    val email      = varchar("email", 128).uniqueIndex()
-    val avatarUrl  = varchar("avatar_url", 512)
-    val password   = varchar("password", 256)
-    val isAdmin    = bool("is_admin")
-    val username   = varchar("username", 128).uniqueIndex()
-    val dateOfBirth= datetime("date_of_birth")
-    val weight     = float("weight")
-    val height     = integer("height")
-    val createdAt  = datetime("created_at")
-    val updatedAt  = datetime("updated_at")
-
-    override val primaryKey = PrimaryKey(id)
 }
 
-//// Таблица пользователей
-//object Users : IntIdTable(name = "user", columnName = "user_id") {
-//    val firstName = varchar("first_name", 255)
-//    val lastName = varchar("last_name", 255)
-//    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
-//}
-//
-//// Таблица email пользователей
-//object UserEmails : Table(name = "user_email") {
-//    val userId = integer("user_id").references(Users.id)
-//    val email = varchar("email", 255).uniqueIndex()
-//
-//    override val primaryKey = PrimaryKey(userId)
-//}
-//
-//// Таблица паролей пользователей
-//object UserPasswords : Table(name = "user_password") {
-//    val userId = integer("user_id").references(Users.id)
-//    val password = varchar("password", 255)
-//
-//    override val primaryKey = PrimaryKey(userId)
-//}
-//
-//// Таблицы справочников
-//object UnitSystems : IntIdTable(name = "unit_system", columnName = "unit_system_id") {
-//    val systemName = varchar("system_name", 255).uniqueIndex()
-//}
-//
-//object EnergySystems : IntIdTable(name = "energy_system", columnName = "energy_system_id") {
-//    val systemName = varchar("system_name", 255).uniqueIndex()
-//}
-//
-//object HealthGoals : IntIdTable(name = "health_goal", columnName = "health_goal_id") {
-//    val goalName = varchar("goal_name", 255).uniqueIndex()
-//}
-//
-//// Таблица параметров пользователя
-//object UserParameters : Table(name = "user_parameters") {
-//    val userId = integer("user_id").references(Users.id)
-//    val weight = integer("weight")
-//    val height = integer("height")
-//    val birthDate = date("birth_date")
-//    val unitSystemId = integer("unit_system_id").references(UnitSystems.id)
-//
-//    override val primaryKey = PrimaryKey(userId)
-//}
-//
-//// Таблицы предпочтений пользователя
-//object UserUnitSystems : Table(name = "user_unit_system") {
-//    val userId = integer("user_id").references(Users.id)
-//    val unitSystemId = integer("unit_system_id").references(UnitSystems.id)
-//
-//    override val primaryKey = PrimaryKey(userId)
-//}
-//
-//object UserEnergySystems : Table(name = "user_energy_system") {
-//    val userId = integer("user_id").references(Users.id)
-//    val energySystemId = integer("energy_system_id").references(EnergySystems.id)
-//
-//    override val primaryKey = PrimaryKey(userId)
-//}
-//
-//object UserGoals : Table(name = "user_goals") {
-//    val userId = integer("user_id").references(Users.id)
-//    val healthGoalId = integer("health_goal_id").references(HealthGoals.id)
-//    val dailySteps = integer("daily_steps")
-//    val waterIntake = integer("water_intake")
-//    val energyIntake = integer("energy_intake")
-//    val sleepHours = integer("sleep_hours")
-//
-//    override val primaryKey = PrimaryKey(userId)
-//}
+/** "user_credentials" **/
+object UserCredentialsTable : Table("user_credentials") {
+    val userId   = integer("user_id").references(UsersTable.userId)
+    val username = varchar("user_name", 255).uniqueIndex()
+    val password = varchar("password", 255)
+
+    override val primaryKey = PrimaryKey(userId, name = "pk_users_credentials")
+}
+
+object UnitSystemsTable : Table("unit_systems") {
+    val unitSystemId = integer("unit_system_id").autoIncrement()
+    val systemName   = varchar("system_name", 50)
+
+    override val primaryKey = PrimaryKey(unitSystemId, name = "pk_unit_systems")
+}
+
+/** “energy_systems” **/
+object EnergySystemsTable : Table("energy_systems") {
+    val energySystemId = integer("energy_system_id").autoIncrement()
+    val systemName     = varchar("system_name", 50)
+
+    override val primaryKey = PrimaryKey(energySystemId, name = "pk_energy_systems")
+}
+
+/** “primary_health_goals” **/
+object PrimaryHealthGoalsTable : Table("primary_health_goals") {
+    val healthGoalId = integer("health_goal_id").autoIncrement()
+    val goalName     = varchar("goal_name", 50)
+
+    override val primaryKey = PrimaryKey(healthGoalId, name = "pk_health_goals")
+}
+
+/** “user_parameters” **/
+object UserParametersTable : Table("user_parameters") {
+    val userId       = integer("user_id").references(UsersTable.userId)
+    val weight       = float("weight")
+    val height       = short("height")
+    val birthDate    = date("birth_date")
+    val unitSystemId = integer("unit_system_id").references(UnitSystemsTable.unitSystemId)
+
+    override val primaryKey = PrimaryKey(userId, name = "pk_user_parameters")
+}
+
+/** “user_preferences” **/
+object UserPreferencesTable : Table("user_preferences") {
+    val userId         = integer("user_id").references(UsersTable.userId)
+    val unitSystemId   = integer("unit_system_id").references(UnitSystemsTable.unitSystemId)
+    val energySystemId = integer("energy_system_id").references(EnergySystemsTable.energySystemId)
+    val healthGoalId   = integer("health_goal_id").references(PrimaryHealthGoalsTable.healthGoalId).nullable()
+    val dailyStepGoal     = integer("daily_step_goal").nullable()
+    val waterIntakeGoal    = integer("water_intake_goal").nullable()
+    val calorieGoal   = short("calorie_goal").nullable()
+    val sleepGoal     = float("sleep_goal").nullable()
+    val workoutsCount  = short("workouts_count").nullable()
+
+    override val primaryKey = PrimaryKey(userId, name = "pk_user_preferences")
+}

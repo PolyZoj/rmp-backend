@@ -69,13 +69,18 @@ fun Application.module() {
     val authConsumer = KafkaConsumerService(createKafkaConsumer(), listOf("auth-requests"))
     authConsumer.startConsuming { conversationId, message ->
         val data = Json.decodeFromString<DataPayload>(message)
-        val command = data.params.getOrNull(0)
-        val username = data.params.getOrNull(1) ?: ""
-        val password = data.params.getOrNull(2) ?: ""
+        val command = data.message
+        val username = data.params.getOrNull(0)
+        val password = data.params.getOrNull(1)
 
         when (command) {
             "login" -> {
-                val requestPayload = DataPayload("user-service", listOf("findByUsername", username))
+                if (username == null || password == null) {
+                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
+                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                    return@startConsuming
+                }
+                val requestPayload = DataPayload("login", listOf(username))
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
@@ -96,7 +101,12 @@ fun Application.module() {
             }
 
             "register" -> {
-                val requestPayload = DataPayload("user-service", listOf("createUser", username, password))
+                if (username == null || password == null) {
+                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
+                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                    return@startConsuming
+                }
+                val requestPayload = DataPayload("createUser", listOf(username, password))
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
@@ -118,6 +128,22 @@ fun Application.module() {
             else -> {
                 val msg = DataPayload("user-service", listOf("Unknown command"))
                 producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+            }
+        }
+    }
+
+    val userConsumer = KafkaConsumerService(createKafkaConsumer(), listOf("user-gateway-requests"))
+    userConsumer.startConsuming { conversationId, message ->
+        val data = Json.decodeFromString<DataPayload>(message)
+        val command = data.message
+        val args = data.params
+        when (command) {
+            "userInfo" -> {
+
+            }
+
+            "findByUsername" -> {
+
             }
         }
     }
