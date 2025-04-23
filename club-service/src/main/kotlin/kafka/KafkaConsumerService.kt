@@ -49,7 +49,7 @@ fun createKafkaConsumer(): KafkaConsumer<String, String> {
         put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
         put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
 
-        put("group.id", "user-service-consumer")
+        put("group.id", "club-service-consumer")
         put("auto.offset.reset", "earliest")
         put("enable.auto.commit", "false")
 

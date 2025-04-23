@@ -1,7 +1,9 @@
 package ru.polyZog.models
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class DataPayload(
     val message: String,
-    val clubId: String? = null,
-    val parameters: List<String> = emptyList()
+    val params: List<String>
 )

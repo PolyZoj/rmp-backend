@@ -47,6 +47,7 @@ services:
     depends_on:
       - redis
       - kafka
+      - club-gateway
     environment:
       - JWT_AUDIENCE=jwt-audience
       - JWT_DOMAIN=https://jwt-provider-domain

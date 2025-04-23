@@ -44,7 +44,7 @@ fun Application.configureRouting() {
                         responses[record.key()]?.complete(response)
                     } catch (e: Exception) {
                         responses[record.key()]?.complete(
-                            DataPayload("error", parameters = listOf("Processing error"))
+                            DataPayload("error", params = listOf("Processing error"))
                         )
                     }
                 }
@@ -58,7 +58,7 @@ fun Application.configureRouting() {
                 val request = call.receive<ClubCreateRequest>()
                 val payload = DataPayload(
                     message = "create",
-                    parameters = listOf(request.name, request.description, request.ownerId)
+                    params = listOf(request.name, request.description, request.ownerId)
                 )
                 
                 processClubRequest(payload, call, producer, responses, mutex, json)
@@ -69,8 +69,7 @@ fun Application.configureRouting() {
                 val request = call.receive<ClubMemberRequest>()
                 val payload = DataPayload(
                     message = "addMember",
-                    clubId = clubId,
-                    parameters = listOf(request.userId)
+                    params = listOf(clubId, request.userId)
                 )
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
@@ -80,8 +79,7 @@ fun Application.configureRouting() {
                 val userId = call.parameters["userId"] ?: throw IllegalArgumentException("Missing user ID")
                 val payload = DataPayload(
                     message = "removeMember",
-                    clubId = clubId,
-                    parameters = listOf(userId)
+                    params = listOf(clubId, userId)
                 )
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
@@ -90,7 +88,7 @@ fun Application.configureRouting() {
                 val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
                 val payload = DataPayload(
                     message = "getInfo",
-                    clubId = clubId
+                    params = listOf(clubId)
                 )
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
@@ -114,7 +112,6 @@ private suspend fun processClubRequest(
     mutex.withLock {
         responses[correlationId] = responseDeferred
     }
-
     producer.send(ProducerRecord(
         "club-requests",
         correlationId,
@@ -131,7 +128,7 @@ private suspend fun processClubRequest(
 
             result.message == "error" -> call.respond(
                 HttpStatusCode.BadRequest,
-                mapOf<String, String>("error" to (result.parameters.firstOrNull() ?: "Unknown error"))
+                mapOf<String, String>("error" to (result.params.firstOrNull() ?: "Unknown error"))
             )
 
             else -> handleClubResponse(result, call)
@@ -146,8 +143,8 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
         "created" -> call.respond(
             HttpStatusCode.Created,
             mapOf(
-                "clubId" to response.clubId,
-                "name" to response.parameters.getOrNull(0)
+                "clubId" to response.params.getOrNull(0),
+                "name" to response.params.getOrNull(1)
              )
         )
 
@@ -155,18 +152,19 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
             HttpStatusCode.OK,
             mapOf(
                 "message" to response.message,
-                "userId" to response.parameters.firstOrNull(),
-                "clubId" to response.clubId
+                "userId" to response.params.getOrNull(0),
+                "clubId" to response.params.getOrNull(1)
             )
         )
 
         "clubInfo" -> call.respond(
             HttpStatusCode.OK,
             mapOf(
-                "name" to response.parameters.getOrNull(0),
-                "description" to response.parameters.getOrNull(1),
-                "ownerId" to response.parameters.getOrNull(2),
-                "memberCount" to response.parameters.getOrNull(3)?.toIntOrNull()
+                "id" to response.params.getOrNull(0),
+                "name" to response.params.getOrNull(1),
+                "description" to response.params.getOrNull(2),
+                "ownerId" to response.params.getOrNull(3),
+                "members" to response.params.getOrNull(4)
             )
         )
 
@@ -185,9 +183,9 @@ private fun Application.createClubKafkaTopics() {
 
     AdminClient.create(adminProps).use { admin ->
         val topics = listOf(
-            NewTopic("club-requests", 3, 3.toShort())
+            NewTopic("club-requests", 1, 3.toShort())
                 .configs(mapOf("min.insync.replicas" to "2")),
-            NewTopic("club-responses", 3, 3.toShort())
+            NewTopic("club-responses", 1, 3.toShort())
                 .configs(mapOf("min.insync.replicas" to "2"))
         )
 

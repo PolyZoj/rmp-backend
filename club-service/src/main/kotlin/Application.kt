@@ -61,7 +61,7 @@ fun Application.module() {
         
         try {
             val payload = Json.decodeFromString<DataPayload>(message)
-            
+            println(payload)
             when (payload.message.lowercase()) {
                 "create" -> handleCreateClub(payload, conversationId, producerService)
                 "addmember" -> handleAddMember(payload, conversationId, producerService)
@@ -80,20 +80,20 @@ private fun handleCreateClub(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    val name = payload.parameters.getOrNull(0) ?: ""
-    val description = payload.parameters.getOrNull(1) ?: ""
-    val ownerId = payload.parameters.getOrNull(2) ?: ""
-    
+    println("sending response")
+    val name = payload.params.getOrNull(0) ?: ""
+    val description = payload.params.getOrNull(1) ?: ""
+    val ownerId = payload.params.getOrNull(2) ?: ""
+    println("sending response")
     if (name.isBlank() || ownerId.isBlank()) {
-        sendError(conversationId, "Missing required parameters", producer)
+        sendError(conversationId, "Missing required params", producer)
         return
     }
     println("sending response")
     val club = ClubDataSource.createClub(name, description, ownerId)
     val response = DataPayload(
         message = "created",
-        clubId = club.id,
-        parameters = listOf(club.id, club.name)
+        params = listOf(club.id, club.name)
     )
     producer.send("club-responses", conversationId, Json.encodeToString(response))
 }
@@ -103,8 +103,8 @@ private fun handleAddMember(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    val clubId = payload.clubId ?: ""
-    val userId = payload.parameters.firstOrNull() ?: ""
+    val clubId = payload.params.getOrNull(0) ?: ""
+    val userId = payload.params.getOrNull(1) ?: ""
     
     if (clubId.isBlank() || userId.isBlank()) {
         sendError(conversationId, "Missing club ID or user ID", producer)
@@ -115,8 +115,7 @@ private fun handleAddMember(
         true -> {
             val response = DataPayload(
                 message = "memberAdded",
-                clubId = clubId,
-                parameters = listOf(userId)
+                params = listOf(userId, clubId)
             )
             producer.send("club-responses", conversationId, Json.encodeToString(response))
         }
@@ -129,8 +128,8 @@ private fun handleRemoveMember(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    val clubId = payload.clubId ?: ""
-    val userId = payload.parameters.firstOrNull() ?: ""
+    val clubId = payload.params.getOrNull(0) ?: ""
+    val userId = payload.params.getOrNull(1) ?: ""
     
     if (clubId.isBlank() || userId.isBlank()) {
         sendError(conversationId, "Missing club ID or user ID", producer)
@@ -141,8 +140,7 @@ private fun handleRemoveMember(
         true -> {
             val response = DataPayload(
                 message = "memberRemoved",
-                clubId = clubId,
-                parameters = listOf(userId)
+                params = listOf(userId, clubId)
             )
             producer.send("club-responses", conversationId, Json.encodeToString(response))
         }
@@ -155,14 +153,13 @@ private fun handleGetInfo(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    val clubId = payload.clubId ?: ""
+    val clubId = payload.params.getOrNull(0) ?: ""
     val club = ClubDataSource.getClub(clubId)
     
     if (club != null) {
         val response = DataPayload(
             message = "clubInfo",
-            clubId = clubId,
-            parameters = listOf(club.name, club.description, club.ownerId, club.members.size.toString())
+            params = listOf(club.id, club.name, club.description, club.ownerId, club.members.toString())
         )
         producer.send("club-responses", conversationId, Json.encodeToString(response))
     } else {
@@ -173,7 +170,7 @@ private fun handleGetInfo(
 private fun sendError(conversationId: String, message: String, producer: KafkaProducerService) {
     val response = DataPayload(
         message = "error",
-        parameters = listOf(message)
+        params = listOf(message)
     )
     producer.send("club-responses", conversationId, Json.encodeToString(response))
 }
