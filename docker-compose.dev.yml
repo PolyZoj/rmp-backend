@@ -19,72 +19,67 @@ x-microservice-common: &microservice-common
     - "com.docker.compose.project=rmp-backend"
 
 services:
-  #  # Databases
-#    psql_users:
-#      image: postgres:alpine
-#      environment:
-#        - POSTGRES_DB=user_db
-#        - POSTGRES_USER=${DB_USER:-postgres}
-#        - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
-#        - POSTGRES_HOST_AUTH_METHOD=trust
-#      volumes:
-#        - type: volume
-#          source: psql_users_data
-#          target: /var/lib/postgresql/data
-#          volume:
-#            nocopy: true
-#      ports:
-#        - "5433:5432"
-#      healthcheck:
-#        test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-#        interval: 10s
-#        timeout: 5s
-#        retries: 5
-#        start_period: 10s
-#      networks:
-#        - backend_net
-#      deploy:
-#        restart_policy:
-#          condition: on-failure
-#          max_attempts: 10
-#      labels:
-#        - "com.docker.compose.project=rmp-backend"
-#        - "com.docker.compose.service=psql_users"
-  #
-  #  # Реплика БД пользователей для операций чтения
-  #  psql_users_replica:
-  #    image: postgres:alpine
-  #    environment:
-  #      - POSTGRES_DB=user_db
-  #      - POSTGRES_USER=${DB_USER:-postgres}
-  #      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
-  #      - POSTGRES_HOST_AUTH_METHOD=trust
-  #      - PRIMARY_HOST=psql_users
-  #      - PRIMARY_PORT=5432
-  #      - REPLICATION_USER=${DB_USER:-postgres}
-  #      - REPLICATION_PASSWORD=${DB_PASSWORD:-postgres}
-  #    volumes:
-  #      - psql_users_replica_data:/var/lib/postgresql/data
-  #      - ./docker-entrypoint-initdb.d/init-replica.sh:/docker-entrypoint-initdb.d/init-replica.sh:ro
-  #    ports:
-  #      - "5436:5432"
-  #    healthcheck:
-  #      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-  #      interval: 10s
-  #      timeout: 5s
-  #      retries: 5
-  #      start_period: 30s
-  #    depends_on:
-  #      - psql_users
-  #    networks:
-  #      - backend_net
-  #    deploy:
-  #      restart_policy:
-  #        condition: on-failure
-  #        max_attempts: 10
-  #    labels:
-  #      - "com.docker.compose.project=rmp-backend"
-  #      - "com.docker.compose.service=psql_users_replica"
+  # Databases
+  psql_users_master:
+    image: postgres:alpine
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - psql_master_data:/var/lib/postgresql/data
+      - ./db/master/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.service=psql_users"
+
+  # Реплика БД пользователей для операций чтения
+  psql_users_replica:
+    image: postgres:alpine
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      PRIMARY_HOST: psql_users_master
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: ${DB_USER:-replicator}
+      REPLICATION_PASSWORD: ${DB_PASSWORD:-repl_pass}
+    volumes:
+      - psql_replica_data:/var/lib/postgresql/data
+      - ./db/replica/setup-replica.sh:/docker-entrypoint-initdb.d/setup-replica.sh:ro
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - psql_users
+    networks:
+      - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.service=psql_users_replica"
   #
   #  psql_clubs:
   #    image: postgres:alpine
@@ -196,22 +191,25 @@ services:
         <<: *build-args
     image: rmp-backend-auth-service
     depends_on:
-#      - psql_users
+      - psql_users_master
+      - psql_users_replica
       - kafka
       - redis
     expose:
       - "8080"
     environment:
-      - DB_HOST=psql_users
-      - DB_PORT=5432
-      - DB_NAME=user_db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - JWT_AUDIENCE=jwt-audience
-      - JWT_DOMAIN=https://jwt-provider-domain
-      - JWT_REALM=ktor-realm
-      - JWT_SECRET=secret
+      DB_HOST_MASTER: psql_users_master
+      DB_PORT_MASTER: 5433
+      DB_HOST_REPLICA: psql_users_replica
+      DB_PORT_REPLICA: 5436
+      DB_NAME: user_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_AUDIENCE: jwt-audience
+      JWT_DOMAIN: https://jwt-provider-domain
+      JWT_REALM: ktor-realm
+      JWT_SECRET: secret
     <<: *microservice-common
     deploy:
       resources:

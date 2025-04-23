@@ -7,12 +7,13 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.config.ApplicationConfig
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
+import ru.polyZoj.common.DataPayload
+import ru.polyZoj.db.DataSourceConfig
+import ru.polyZoj.db.DatabaseFactory
 import ru.polyZoj.kafka.KafkaConsumerService
 import ru.polyZoj.kafka.KafkaProducerService
 import ru.polyZoj.kafka.createKafkaConsumer
 import ru.polyZoj.kafka.createKafkaProducer
-import ru.polyZoj.models.DataPayload
-import ru.polyZoj.models.UserRegistration
 import ru.polyZoj.repositories.UserRepository
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -33,6 +34,10 @@ fun Application.module() {
             ignoreUnknownKeys = true
         })
     }
+
+    val ds = DataSourceConfig()
+    DatabaseFactory.init(ds)
+
 
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)

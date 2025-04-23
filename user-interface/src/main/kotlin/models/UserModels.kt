@@ -1,36 +1,17 @@
 package ru.polyZoj.models
 
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.modules.SerializersModule
-import kotlinx.serialization.modules.contextual
-import java.time.LocalDateTime
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
+import ru.polyZoj.common.ZonedDateTimeSerializer
 
-// Создаем контекстный сериализатор для Any
-val AppSerializersModule = SerializersModule {
-    contextual(AnyToStringSerializer)
+@Serializable
+enum class PrimaryHealthGoal {
+    LOSE_WEIGHT,
+    GAIN_MUSCLE,
+    MAINTAIN_FITNESS
 }
 
-// Сериализатор для преобразования различных типов в строки в JSON
-object AnyToStringSerializer : KSerializer<Any> {
-    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("AnyToString", PrimitiveKind.STRING)
-    
-    override fun serialize(encoder: Encoder, value: Any) {
-        encoder.encodeString(value.toString())
-    }
-    
-    override fun deserialize(decoder: Decoder): Any {
-        return decoder.decodeString()
-    }
-}
 
 /**
  * Базовая модель пользователя
@@ -44,33 +25,27 @@ data class User(
     @SerialName("created_at") val createdAt: String? = null
 )
 
-
 @Serializable
 data class UserDTO(
-    val id: Int, // [serial]
-    val first_name: String, // [varchar(64)]
-    val last_name: String, // [varchar(64)]
-
-    val email: String, // [varchar(128)]
-    val avatar_url: String, // [varchar(512)]
-    val password: String, // [varchar(256)](encrypted)
-    val is_admin: Boolean, // [boolean]
-    val username: String, // [varchar(128)]
-
-    @Serializable(with = ZonedDateTimeSerializer::class)
-    val date_of_birth: ZonedDateTime, // [timestamp with time zone]
-    val weight: Float, // (kg) [float]
-    val height: Short, // (cm) [smallint]
-    val primary_health_goal: PrimaryHealthGoal, // enum
-    val daily_step_goal: Int, // (steps count) [integer]
-    val water_intake_goal: Int, // (millilitres) [integer]
-    val calorie_goal: Short, // (calories) [smallint]
-    val workouts_count: Short, // [smallint]
-    val clubs: List<Int>, // (ids) [integer[]]
-    @Serializable(with = ZonedDateTimeSerializer::class)
-    val created_at: ZonedDateTime, // [timestamp with timezone]
-    @Serializable(with = ZonedDateTimeSerializer::class)
-    val updated_at: ZonedDateTime // [timestamp with timezone]
+    val id: Int,
+    @SerialName("first_name") val firstName: String,
+    @SerialName("last_name")  val lastName:  String,
+    val email: String,
+    @SerialName("avatar_url") val avatarUrl: String,
+    val password: String,
+    @SerialName("is_admin")    val isAdmin: Boolean,
+    val username: String,
+    @SerialName("date_of_birth") @Serializable(with = ZonedDateTimeSerializer::class) val dateOfBirth: ZonedDateTime,
+    val weight: Float,
+    val height: Short,
+    @SerialName("primary_health_goal") val primaryHealthGoal: PrimaryHealthGoal,
+    @SerialName("daily_step_goal") val dailyStepGoal: Int,
+    @SerialName("water_intake_goal") val waterIntakeGoal: Int,
+    @SerialName("calorie_goal") val calorieGoal: Short,
+    @SerialName("workouts_count") val workoutsCount: Short,
+    val clubs: List<Int>, // (ids)
+    @SerialName("created_at") @Serializable(with = ZonedDateTimeSerializer::class) val createdAt: ZonedDateTime,
+    @SerialName("updated_at") @Serializable(with = ZonedDateTimeSerializer::class) val updatedAt: ZonedDateTime,
 )
 
 /**
@@ -183,24 +158,4 @@ data class UserResponse(
     @SerialName("created_at") val createdAt: String,
     val parameters: UserParametersDTO? = null,
     val preferences: UserPreferences? = null
-)
-
-/**
- * Стандартный ответ об ошибке
- */
-@Serializable
-data class ErrorResponse(
-    val status: Int,
-    val message: String,
-    val timestamp: String = LocalDateTime.now().toString()
-)
-
-/**
- * Стандартный успешный ответ
- */
-@Serializable
-data class SuccessResponse(
-    val success: Boolean = true,
-    val message: String? = null,
-    val data: Map<String, String>? = null
 )

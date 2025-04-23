@@ -8,38 +8,7 @@ ktor:
             - classes
             - resources
 
-database:
-  writer:
-    jdbcUrl: "jdbc:postgresql://${DB_HOST_WRITER:psql_users}:${DB_PORT_WRITER:5432}/${DB_NAME:user_db}"
-    driverClassName: "org.postgresql.Driver"
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:postgres}
-    maximumPoolSize: 10
-    minimumIdle: 2
-    idleTimeout: 30000
-    maxLifetime: 2000000
-    connectionTimeout: 30000
-    leakDetectionThreshold: 30000
-    validationTimeout: 5000
-  reader:
-    jdbcUrl: "jdbc:postgresql://${DB_HOST_READER:psql_users_replica}:${DB_PORT_READER:5432}/${DB_NAME:user_db}"
-    driverClassName: "org.postgresql.Driver"
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:postgres}
-    maximumPoolSize: 20
-    minimumIdle: 5
-    idleTimeout: 30000
-    maxLifetime: 2000000
-    connectionTimeout: 30000
-    leakDetectionThreshold: 30000
-    validationTimeout: 5000
-    
-flyway:
-  locations: "classpath:db/migration"
-  baselineOnMigrate: true
-  baselineVersion: 0
-  validateOnMigrate: false
-  outOfOrder: true
+
   
 logging:
   level:
