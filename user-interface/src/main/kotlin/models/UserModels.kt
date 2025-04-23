@@ -12,9 +12,21 @@ enum class PrimaryHealthGoal {
     MAINTAIN_FITNESS
 }
 
+@Serializable
+data class UnitSystem(
+    @SerialName("unit_system_id") val unitSystemId: Int,
+    @SerialName("system_name") val systemName: String
+)
+
+@Serializable
+data class EnergySystem(
+    @SerialName("energy_system_id") val energySystemId: Int,
+    @SerialName("system_name") val systemName: String
+)
+
 
 /**
- * Базовая модель пользователя
+ * Базовая модель пользователя (DB table “users”)
  */
 @Serializable
 data class User(
@@ -22,9 +34,14 @@ data class User(
     @SerialName("first_name") val firstName: String,
     @SerialName("last_name") val lastName: String,
     val email: String,
-    @SerialName("created_at") val createdAt: String? = null
+    @SerialName("created_at")
+    @Serializable(with = ZonedDateTimeSerializer::class)
+    val createdAt: ZonedDateTime? = null
 )
 
+/**
+ * Полная информация о пользователе (API DTO)
+ */
 @Serializable
 data class UserDTO(
     val id: Int,
@@ -43,13 +60,13 @@ data class UserDTO(
     @SerialName("water_intake_goal") val waterIntakeGoal: Int,
     @SerialName("calorie_goal") val calorieGoal: Short,
     @SerialName("workouts_count") val workoutsCount: Short,
-    val clubs: List<Int>, // (ids)
+    val clubs: List<Int>, // FK to clubs table
     @SerialName("created_at") @Serializable(with = ZonedDateTimeSerializer::class) val createdAt: ZonedDateTime,
     @SerialName("updated_at") @Serializable(with = ZonedDateTimeSerializer::class) val updatedAt: ZonedDateTime,
 )
 
 /**
- * Модель для регистрации нового пользователя
+ * Регистрация нового пользователя
  */
 @Serializable
 data class UserRegistration(
@@ -57,38 +74,39 @@ data class UserRegistration(
     @SerialName("last_name") val lastName: String,
     val email: String,
     val password: String,
-    val weight: Int,
-    val height: Int,
-    @SerialName("birth_date") val birthDate: String,
+    // пользователь может передавать в имперской или метрической системе…
+    // но мы всегда конвертим и храним как метрические:
+    val weight: Float,
+    val height: Short,
+    @SerialName("birth_date") @Serializable(with = ZonedDateTimeSerializer::class) val birthDate: ZonedDateTime,
     @SerialName("unit_system_id") val unitSystemId: Int,
     @SerialName("energy_system_id") val energySystemId: Int,
     @SerialName("health_goal_id") val healthGoalId: Int,
     @SerialName("daily_steps") val dailySteps: Int,
     @SerialName("water_intake") val waterIntake: Int,
-    @SerialName("energy_intake") val energyIntake: Int,
-    @SerialName("sleep_hours") val sleepHours: Int
+    @SerialName("energy_intake") val energyIntake: Short,
+    @SerialName("sleep_hours") val sleepHours: Float
 )
 
 /**
- * Физические параметры пользователя
+ * Параметры пользователя (API DTO & DB table “user_parameters”)
  */
 @Serializable
 data class UserParametersDTO(
     @SerialName("user_id") val userId: Int,
-    val weight: Int,
-    val height: Int,
-    @SerialName("birth_date") val birthDate: String,
+    val weight: Float,
+    val height: Short,
+    @SerialName("birth_date") @Serializable(with = ZonedDateTimeSerializer::class) val birthDate: ZonedDateTime,
     @SerialName("unit_system_id") val unitSystemId: Int
 ) {
-    // Вычисляемое свойство для ИМТ 
-    fun getBMI(): Double = when (height) {
-        0 -> 0.0 // Защита от деления на ноль
-        else -> weight * 10000.0 / (height * height)
-    }
+    // BMI высчитываем метрическим:
+    fun getBMI(): Double =
+        if (height == 0.toShort()) 0.0
+        else weight * 10000.0 / (height * height)
 }
 
 /**
- * Предпочтения пользователя
+ * Предпочтения пользователя (API DTO & DB table “user_preferences”)
  */
 @Serializable
 data class UserPreferences(
@@ -97,39 +115,12 @@ data class UserPreferences(
     @SerialName("health_goal_id") val healthGoalId: Int,
     @SerialName("daily_steps") val dailySteps: Int,
     @SerialName("water_intake") val waterIntake: Int,
-    @SerialName("energy_intake") val energyIntake: Int,
-    @SerialName("sleep_hours") val sleepHours: Int
+    @SerialName("energy_intake") val energyIntake: Short,
+    @SerialName("sleep_hours") val sleepHours: Float
 )
 
 /**
- * Система измерения (метрическая, имперская)
- */
-@Serializable
-data class UnitSystem(
-    @SerialName("unit_system_id") val unitSystemId: Int,
-    @SerialName("system_name") val systemName: String
-)
-
-/**
- * Система измерения энергии (калории, джоули)
- */
-@Serializable
-data class EnergySystem(
-    @SerialName("energy_system_id") val energySystemId: Int,
-    @SerialName("system_name") val systemName: String
-)
-
-/**
- * Цель по здоровью
- */
-@Serializable
-data class HealthGoal(
-    @SerialName("health_goal_id") val healthGoalId: Int,
-    @SerialName("goal_name") val goalName: String
-)
-
-/**
- * Учетные данные пользователя для авторизации
+ * Учетные данные для авторизации
  */
 @Serializable
 data class UserCredentials(
@@ -138,7 +129,7 @@ data class UserCredentials(
 )
 
 /**
- * Модель для смены пароля
+ * Смена пароля
  */
 @Serializable
 data class PasswordChangeRequest(
@@ -151,11 +142,11 @@ data class PasswordChangeRequest(
  */
 @Serializable
 data class UserResponse(
-    @SerialName("user_id") val userId: Int,
+    @SerialName("user_id")  val userId: Int,
     @SerialName("first_name") val firstName: String,
-    @SerialName("last_name") val lastName: String,
+    @SerialName("last_name")  val lastName: String,
     val email: String,
-    @SerialName("created_at") val createdAt: String,
+    @SerialName("created_at") @Serializable(with = ZonedDateTimeSerializer::class) val createdAt: ZonedDateTime,
     val parameters: UserParametersDTO? = null,
     val preferences: UserPreferences? = null
 )
