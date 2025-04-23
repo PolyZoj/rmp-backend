@@ -2,6 +2,7 @@ package ru.polyZoj.models
 
 import java.time.ZonedDateTime
 import kotlinx.serialization.Serializable
+import ru.polyZoj.common.ZonedDateTimeSerializer
 
 @Serializable
 enum class PrimaryHealthGoal {

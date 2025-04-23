@@ -1,4 +1,3 @@
-
 plugins {
     application
     id("org.jetbrains.kotlin.plugin.serialization") version "1.8.21"

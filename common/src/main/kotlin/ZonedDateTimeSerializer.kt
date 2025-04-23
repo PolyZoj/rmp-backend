@@ -1,4 +1,4 @@
-package ru.polyZoj.models
+package ru.polyZoj.common
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.PrimitiveKind
