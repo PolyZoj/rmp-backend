@@ -20,12 +20,11 @@ repositories {
 }
 
 dependencies {
+    implementation("ru.polyZoj:common")
     implementation(libs.ktor.simple.cache)
     implementation(libs.ktor.server.core)
-    implementation(libs.ktor.simple.redis.cache)
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.auth)
-    implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.netty)
     implementation(libs.logback.classic)
     implementation(libs.ktor.server.config.yaml)
@@ -37,5 +36,17 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
     implementation("io.ktor:ktor-client-core:2.3.2")
-    implementation("io.ktor:ktor-client-cio:2.3.2") 
+    implementation("io.ktor:ktor-client-cio:2.3.2")
+    implementation("org.apache.kafka:kafka-clients:3.7.1")
 }
+
+tasks.register("downloadDependencies") {
+    doLast {
+        configurations
+            .filter { it.isCanBeResolved }
+            .forEach { configuration ->
+                configuration.resolve()
+            }
+    }
+}
+

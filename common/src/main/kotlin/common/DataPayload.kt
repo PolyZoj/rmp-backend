@@ -1,4 +1,4 @@
-package ru.polyZoj.common
+package common
 
 import kotlinx.serialization.Serializable
 

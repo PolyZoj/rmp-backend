@@ -7,16 +7,17 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.config.ApplicationConfig
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
-import ru.polyZoj.kafka.KafkaConsumerService
-import ru.polyZoj.kafka.KafkaProducerService
-import ru.polyZoj.kafka.createKafkaConsumer
-import ru.polyZoj.kafka.createKafkaProducer
-import ru.polyZoj.common.DataPayload
+import common.kafka.KafkaConsumerService
+import common.kafka.KafkaProducerService
+import common.kafka.createKafkaConsumer
+import common.kafka.createKafkaProducer
+import common.DataPayload
 import ru.polyZoj.models.User
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import common.kafka.KafkaConfig
 
 import java.util.Date
 
@@ -55,18 +56,21 @@ fun Application.module() {
             ignoreUnknownKeys = true
         })
     }
+    val kafkaConfig = KafkaConfig()
+    kafkaConfig.createTopicIfNotExists("user-requests", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("user-responses", 1, 3.toShort())
 
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
 
-    val responseConsumer = KafkaConsumerService(createKafkaConsumer(), listOf("user-responses"))
+    val responseConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("user-responses"))
     responseConsumer.startConsuming { conversationId, message ->
         val response = Json.decodeFromString<DataPayload>(message)
         pendingResponses[conversationId]?.complete(response)
         pendingResponses.remove(conversationId)
     }
 
-    val authConsumer = KafkaConsumerService(createKafkaConsumer(), listOf("auth-requests"))
+    val authConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("auth-requests"))
     authConsumer.startConsuming { conversationId, message ->
         val data = Json.decodeFromString<DataPayload>(message)
         val command = data.message
@@ -132,18 +136,117 @@ fun Application.module() {
         }
     }
 
-    val userConsumer = KafkaConsumerService(createKafkaConsumer(), listOf("user-gateway-requests"))
+    val userConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("user-gateway-requests"))
     userConsumer.startConsuming { conversationId, message ->
         val data = Json.decodeFromString<DataPayload>(message)
         val command = data.message
         val args = data.params
         when (command) {
             "userInfo" -> {
+                val userId = args.getOrNull(0)
+                if (userId == null) {
+                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
+                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                }
+                val requestPayload = DataPayload("getUserDTO", listOf(userId.toString()))
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
+
+                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+
+                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null) {
+                        val msg = DataPayload("user-service", listOf("Error getting user"))
+                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                        return@whenComplete
+                    }
+                    val userDTO = response.params.getOrNull(0)
+                    val msg = DataPayload("user-service", listOf(userDTO.toString()))
+                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                }
 
             }
 
             "findByUsername" -> {
+                val username = args.getOrNull(0)
+                if (username == null) {
+                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
+                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                }
+                val requestPayload = DataPayload("findByUsername", listOf(username.toString()))
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
 
+                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+
+                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null) {
+                        val msg = DataPayload("user-service", listOf("Error getting user"))
+                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                        return@whenComplete
+                    }
+                    val userId = response.params.getOrNull(0)
+                    val msg = DataPayload("user-service", listOf(userId.toString()))
+                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                }
+            }
+
+            "updateUserInfo" -> {
+                val userId = args.getOrNull(0)
+                if (userId == null) {
+                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
+                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                }
+                val requestPayload = DataPayload("updateUserDTO", listOf(userId.toString()))
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
+
+                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+
+                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null) {
+                        val msg = DataPayload("user-service", listOf("Error getting user"))
+                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                        return@whenComplete
+                    }
+                    val userDTO = response.params.getOrNull(0)
+                    val msg = DataPayload("user-service", listOf(userDTO.toString()))
+                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                }
+            }
+
+            "deleteUser" -> {
+                val userId = args.getOrNull(0)
+                if (userId == null) {
+                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
+                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                }
+                val requestPayload = DataPayload("deleteUser", listOf(userId.toString()))
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
+
+                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+
+                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null) {
+                        val msg = DataPayload("user-service", listOf("Error getting user"))
+                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                        return@whenComplete
+                    }
+                    val success = response.message
+                    if (success == "success") {
+                        val msg = DataPayload("user-service", listOf("Successfully deleted"))
+                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                    } else {
+                        val msg = DataPayload("user-service", listOf("Error deleting user"))
+                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                    }
+                }
+            }
+
+            else -> {
+                val msg = DataPayload("user-service", listOf("Unknown command"))
+                producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
             }
         }
     }

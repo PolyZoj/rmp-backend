@@ -1,4 +1,4 @@
-package ru.polyZoj.kafka
+package common.kafka
 
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.NewTopic
@@ -15,7 +15,10 @@ class KafkaConfig {
             val topics = adminClient.listTopics().names().get()
             if (!topics.contains(topicName)) {
                 println("Topic $topicName does not exist. Creating it...")
-                val newTopic = NewTopic(topicName, numPartitions, replicationFactor)
+//                val newTopic = NewTopic(topicName, numPartitions, replicationFactor)
+//                    .configs(mapOf("min.insync.replicas" to "2"))
+                val newTopic = NewTopic(topicName, numPartitions, 1) // only in dev
+                    .configs(mapOf("min.insync.replicas" to "1"))
                 val createTopicsResult = adminClient.createTopics(listOf(newTopic))
                 createTopicsResult.all().get()
                 println("Topic $topicName created successfully.")

@@ -10,7 +10,6 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -18,8 +17,8 @@ import org.apache.kafka.clients.producer.ProducerRecord
 import ru.polyZoj.models.LoginRequest
 import ru.polyZoj.models.RegisterRequest
 import ru.polyZoj.models.TokenResponse
-import ru.polyZoj.models.User
-import ru.polyZoj.common.DataPayload
+import common.DataPayload
+import common.kafka.RequestProcessor
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import org.apache.kafka.clients.admin.AdminClient
@@ -37,6 +36,7 @@ fun Application.configureRouting() {
     val consumer = KafkaConsumer<String, String>(consumerConfig("auth-consumer"))
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
+    val reqProcessor = RequestProcessor()
     
     createKafkaTopics()
 
@@ -67,7 +67,7 @@ fun Application.configureRouting() {
                     message = "register",
                     params = listOf(request.username, request.password)
                 )
-                processAuthRequest(payload, call, producer, responses, mutex, json)
+                reqProcessor.processAuthRequest(payload, "auth-requests", call, producer, responses, mutex, json, ::handleSuccessfulResponse)
             }
 
             post("/login") {
@@ -76,55 +76,13 @@ fun Application.configureRouting() {
                     message = "login",
                     params = listOf(request.username, request.password)
                 )
-                processAuthRequest(payload, call, producer, responses, mutex, json)
+                reqProcessor.processAuthRequest(payload, "auth-requests", call, producer, responses, mutex, json, ::handleSuccessfulResponse)
             }
         }
     }
 }
 
-private suspend fun processAuthRequest(
-    payload: DataPayload,
-    call: ApplicationCall,
-    producer: KafkaProducer<String, String>,
-    responses: ConcurrentHashMap<String, CompletableDeferred<DataPayload>>,
-    mutex: Mutex,
-    json: Json
-) {
-    val correlationId = UUID.randomUUID().toString()
-    val responseDeferred = CompletableDeferred<DataPayload>()
-
-    mutex.withLock {
-        responses[correlationId] = responseDeferred
-    }
-
-    producer.send(ProducerRecord(
-        "auth-requests",
-        correlationId,
-        json.encodeToString(payload)
-    ))
-
-    try {
-        val result = withTimeoutOrNull(5000) { responseDeferred.await() }
-
-        when {
-            result == null -> call.respond(
-                HttpStatusCode.GatewayTimeout,
-                mapOf("error" to "Authentication service timeout")
-            )
-
-            result.message.startsWith("error:") -> call.respond(
-                HttpStatusCode.BadRequest,
-                mapOf("error" to result.message.removePrefix("error:"))
-            )
-
-            else -> handleSuccessfulResponse(payload.message, result, call)
-        }
-    } finally {
-        mutex.withLock { responses.remove(correlationId) }
-    }
-}
-
-suspend private fun handleSuccessfulResponse(
+private suspend fun handleSuccessfulResponse(
     operation: String,
     result: DataPayload,
     call: ApplicationCall

@@ -53,4 +53,5 @@
     <logger name="org.flywaydb" level="INFO" />
     <logger name="com.zaxxer.hikari" level="INFO" />
     <logger name="org.postgresql" level="WARN" />
+    <logger name="org.apache.kafka.clients" level="INFO"/>
 </configuration>

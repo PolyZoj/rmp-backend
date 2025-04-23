@@ -1,4 +1,4 @@
-package ru.polyZoj.kafka
+package common.kafka
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,13 +42,13 @@ class KafkaConsumerService(
     }
 }
 
-fun createKafkaConsumer(): KafkaConsumer<String, String> {
+fun createKafkaConsumer(groupId: String): KafkaConsumer<String, String> {
     val props = Properties().apply {
-       put("bootstrap.servers", "kafka:9092")
+        put("bootstrap.servers", "kafka:9092")
         put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
         put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
 
-        put("group.id", "user-interface-consumer")
+        put("group.id", groupId)
         put("auto.offset.reset", "earliest")
         put("enable.auto.commit", "false")
 

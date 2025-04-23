@@ -6,21 +6,16 @@ import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
-import ru.polyZoj.common.DataPayload
+import common.DataPayload
 import ru.polyZoj.db.*
 import ru.polyZoj.exceptions.DuplicateFieldException
-import ru.polyZoj.kafka.KafkaConsumerService
-import ru.polyZoj.kafka.KafkaProducerService
-import ru.polyZoj.kafka.createKafkaConsumer
-import ru.polyZoj.kafka.createKafkaProducer
+import common.kafka.KafkaConsumerService
+import common.kafka.KafkaProducerService
+import common.kafka.createKafkaConsumer
+import common.kafka.createKafkaProducer
 import ru.polyZoj.models.UserRegistration
 import ru.polyZoj.repositories.UserRepository
 import java.time.LocalDate
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ConcurrentHashMap
-
-
-val pendingResponses = ConcurrentHashMap<String, CompletableFuture<DataPayload>>()
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -54,7 +49,7 @@ fun Application.module() {
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
 
-    val kafkaConsumer = createKafkaConsumer()
+    val kafkaConsumer = createKafkaConsumer("user-interface-consumer")
     val consumerService = KafkaConsumerService(kafkaConsumer, listOf("user-requests"))
 
     val userRepository = UserRepository()
@@ -97,7 +92,7 @@ fun Application.module() {
                 }
             }
 
-            "register" -> {
+            "createUser" -> {
                 val reg = UserRegistration(
                     firstName = args.getOrNull(0) ?: throw IllegalArgumentException("First name is required"),
                     lastName = args.getOrNull(1) ?: throw IllegalArgumentException("Last name is required"),
@@ -149,6 +144,41 @@ fun Application.module() {
                     val userDTO = userRepository.getUserDTO(userId.toInt())
                     if (userDTO != null) {
                         val resp = DataPayload(userId, listOf(Json.encodeToString(userDTO)))
+                        producerService.send("user-responses", conversationId, Json.encodeToString(resp))
+                    } else {
+                        val err = DataPayload("error", listOf("User not found"))
+                        producerService.send("user-responses", conversationId, Json.encodeToString(err))
+                    }
+                }
+            }
+
+            "updateUserDTO" -> {
+                val userId = args.getOrNull(0)
+                if (userId == null) {
+                    val err = DataPayload("error", listOf("Missing user ID"))
+                    producerService.send("user-responses", conversationId, Json.encodeToString(err))
+                } else {
+                    val userDTO = userRepository.getUserDTO(userId.toInt())
+                    if (userDTO != null) {
+                        // Update logic here TODO: add update user info in repository
+                        val resp = DataPayload(userId, listOf(Json.encodeToString(userDTO)))
+                        producerService.send("user-responses", conversationId, Json.encodeToString(resp))
+                    } else {
+                        val err = DataPayload("error", listOf("User not found"))
+                        producerService.send("user-responses", conversationId, Json.encodeToString(err))
+                    }
+                }
+            }
+
+            "deleteUser" -> {
+                val userId = args.getOrNull(0)
+                if (userId == null) {
+                    val err = DataPayload("error", listOf("Missing user ID"))
+                    producerService.send("user-responses", conversationId, Json.encodeToString(err))
+                } else {
+                    val deleted = userRepository.deleteUser(userId.toInt())
+                    if (deleted) {
+                        val resp = DataPayload("success", listOf("User deleted successfully"))
                         producerService.send("user-responses", conversationId, Json.encodeToString(resp))
                     } else {
                         val err = DataPayload("error", listOf("User not found"))

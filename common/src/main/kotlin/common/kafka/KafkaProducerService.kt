@@ -1,10 +1,10 @@
-package ru.polyZoj.kafka
+package common.kafka
 
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
 import java.util.Properties
 
-class KafkaProducerService(private val producer: KafkaProducer<String, String>) {
+class KafkaProducerService(val producer: KafkaProducer<String, String>) {
     fun send(topic: String, conversationId: String, message: String) {
         val record = ProducerRecord(topic, conversationId, message)
         producer.send(record) { metadata, exception ->

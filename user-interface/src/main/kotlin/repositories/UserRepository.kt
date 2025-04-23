@@ -5,6 +5,7 @@ import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.selectAll
@@ -132,6 +133,16 @@ class UserRepository {
                 )
             }
         return userDTO
+    }
+
+    fun deleteUser(userId: Int): Boolean {
+        return DatabaseFactory.write {
+            val usersDeleted = UsersTable.deleteWhere { UsersTable.userId eq userId }
+            val credentialsDeleted = UserCredentialsTable.deleteWhere { UserCredentialsTable.userId eq userId }
+            val parametersDeleted = UserParametersTable.deleteWhere { UserParametersTable.userId eq userId }
+            val preferencesDeleted = UserPreferencesTable.deleteWhere { UserPreferencesTable.userId eq userId }
+            usersDeleted > 0 || credentialsDeleted > 0 || parametersDeleted > 0 || preferencesDeleted > 0
+        }
     }
 
     private fun toUserCredentials(row: ResultRow) = UserCredentials(
