@@ -11,11 +11,13 @@ import ru.polyZoj.kafka.KafkaConsumerService
 import ru.polyZoj.kafka.KafkaProducerService
 import ru.polyZoj.kafka.createKafkaConsumer
 import ru.polyZoj.kafka.createKafkaProducer
+import ru.polyZoj.common.DataPayload
 import ru.polyZoj.models.User
-import ru.polyZoj.repositories.UserDataSource
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import ru.polyZoj.common.DataPayload
+
 import java.util.Date
 
 data class JwtConfig(
@@ -31,82 +33,94 @@ data class JwtConfig(
                 secret = config.property("jwt.secret").getString(),
                 domain = config.property("jwt.domain").getString(),
                 audience = config.property("jwt.audience").getString(),
-                realm = config.property("jwt.realm").getString(),
-                expiresIn = 3_600_000
+                realm = config.property("jwt.realm").getString()
             )
         }
     }
 }
+
+val pendingResponses = ConcurrentHashMap<String, CompletableFuture<DataPayload>>()
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
 fun Application.module() {
-
     val jwtConfig = JwtConfig.fromConfig(environment.config)
 
     install(ContentNegotiation) {
-        json(
-            Json {
-                prettyPrint = true
-                isLenient = true
-                ignoreUnknownKeys = true
-            }
-        )
+        json(Json {
+            prettyPrint = true
+            isLenient = true
+            ignoreUnknownKeys = true
+        })
     }
-//    configureRouting()
-
-//    val kafkaConfig = KafkaConfig()
-//    kafkaConfig.createTopicIfNotExists(
-//        topicName = "example-topic",
-//        numPartitions = 3,
-//        replicationFactor = 1
-//    )
 
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
 
-    val kafkaConsumer = createKafkaConsumer()
-    val consumerTopics = listOf("auth-requests")
-    val consumerService = KafkaConsumerService(kafkaConsumer, consumerTopics)
-
-    consumerService.startConsuming { conversationId, message ->
-        println("Consumed message -> ConversationID: $conversationId, Message: $message")
-
-        val data = Json.decodeFromString<DataPayload>(message)
-        val user = UserDataSource.findUserByUsername(data.params.firstOrNull() ?: "")
-
-        if (user != null) {
-            val token = generateToken(user, jwtConfig)
-            val message = DataPayload(user.id, listOf(token))
-            producerService.send("auth-responses", conversationId, Json.encodeToString(message))
-        } else {
-            val newUser = User(UserDataSource.generateUserId(), data.params.firstOrNull() ?: "", data.params.getOrNull(1)
-                ?: "")
-            UserDataSource.addUser(newUser)
-            val message = DataPayload(newUser.id, listOf("Success register"))
-            producerService.send("auth-responses", conversationId, Json.encodeToString(message))
-        }
-
+    val responseConsumer = KafkaConsumerService(createKafkaConsumer(), listOf("user-responses"))
+    responseConsumer.startConsuming { conversationId, message ->
+        val response = Json.decodeFromString<DataPayload>(message)
+        pendingResponses[conversationId]?.complete(response)
+        pendingResponses.remove(conversationId)
     }
 
-//    routing {
-//        route("/api/v1/users") {
-//            get("/") {
-//                call.respondText("Hello World!")
-//            }
-//
-//            post("/produce") {
-//                val conversationId = call.request.queryParameters["conversationId"]
-//                    ?: return@post call.respondText("Missing conversationId query parameter", status = HttpStatusCode.BadRequest)
-//                val message = call.request.queryParameters["message"]
-//                    ?: return@post call.respondText("Missing message query parameter", status = HttpStatusCode.BadRequest)
-//                producerService.send("example-topic", conversationId, message)
-//                call.respondText("Message sent for conversationId = $conversationId", status = HttpStatusCode.OK)
-//            }
-//        }
-//    }
+    val authConsumer = KafkaConsumerService(createKafkaConsumer(), listOf("auth-requests"))
+    authConsumer.startConsuming { conversationId, message ->
+        val data = Json.decodeFromString<DataPayload>(message)
+        val command = data.params.getOrNull(0)
+        val username = data.params.getOrNull(1) ?: ""
+        val password = data.params.getOrNull(2) ?: ""
+
+        when (command) {
+            "login" -> {
+                val requestPayload = DataPayload("user-service", listOf("findByUsername", username))
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
+
+                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+
+                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null || response.params.isEmpty()) {
+                        val msg = DataPayload("error", listOf("Invalid credentials"))
+                        producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                        return@whenComplete
+                    }
+
+                    val userId = response.params[0]
+                    val token = generateToken(User(userId, username, ""), jwtConfig)
+                    val msg = DataPayload(userId, listOf(token))
+                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                }
+            }
+
+            "register" -> {
+                val requestPayload = DataPayload("user-service", listOf("createUser", username, password))
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
+
+                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+
+                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null) {
+                        val msg = DataPayload("user-service", listOf("Error creating user"))
+                        producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                        return@whenComplete
+                    }
+
+                    val userId = response.params.getOrNull(0) ?: "unknown"
+                    val msg = DataPayload(userId, listOf("Success register"))
+                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                }
+            }
+
+            else -> {
+                val msg = DataPayload("user-service", listOf("Unknown command"))
+                producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+            }
+        }
+    }
 }
 
 fun generateToken(user: User, config: JwtConfig): String {
