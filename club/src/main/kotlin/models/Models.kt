@@ -19,8 +19,6 @@ data class Club(
     val members: MutableSet<String> = mutableSetOf(),
 )
 
-@Serializable
-data class TokenResponse(val id: String, val token: String)
 
 @Serializable
 data class DataPayload(

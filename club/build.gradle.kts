@@ -39,4 +39,6 @@ dependencies {
     implementation("io.ktor:ktor-client-core:2.3.2")
     implementation("io.ktor:ktor-client-cio:2.3.2") 
     implementation("org.apache.kafka:kafka-clients:3.5.1")
+
+    implementation("io.ktor:ktor-server-openapi:3.1.1")
 }

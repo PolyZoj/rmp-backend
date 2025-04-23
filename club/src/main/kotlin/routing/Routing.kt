@@ -23,6 +23,8 @@ import ru.polyZog.models.ClubCreateRequest
 import ru.polyZog.models.ClubMemberRequest
 import ru.polyZog.models.Club
 import ru.polyZog.models.DataPayload
+import io.ktor.server.plugins.openapi.*
+
 
 fun Application.configureRouting() {
     val json = Json { ignoreUnknownKeys = true }
@@ -53,6 +55,7 @@ fun Application.configureRouting() {
     }
 
     routing {
+        openAPI(path="openapi")
         route("/api/v1/clubs") {
             post("/create") {
                 val request = call.receive<ClubCreateRequest>()

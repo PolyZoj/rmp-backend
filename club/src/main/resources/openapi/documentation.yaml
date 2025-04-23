@@ -1,0 +1,118 @@
+openapi: 3.0.3
+info:
+  title: Club Management API
+  version: 1.0.0
+paths:
+  /api/v1/clubs/create:
+    post:
+      summary: Create a new club
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubCreateRequest'
+      responses:
+        '200':
+          description: Club created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Invalid request parameters
+  /api/v1/clubs/{clubId}/members:
+    post:
+      summary: Add a member to a club
+      parameters:
+        - name: clubId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubMemberRequest'
+      responses:
+        '200':
+          description: Member added successfully
+        '400':
+          description: Invalid parameters
+  /api/v1/clubs/{clubId}/members/{userId}:
+    delete:
+      summary: Remove a member from a club
+      parameters:
+        - name: clubId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member removed successfully
+        '400':
+          description: Invalid parameters
+  /api/v1/clubs/{clubId}:
+    get:
+      summary: Get club information
+      parameters:
+        - name: clubId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Club information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    type: string
+                  ownerId:
+                    type: string
+                  members:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Invalid club ID
+components:
+  schemas:
+    ClubCreateRequest:
+      type: object
+      required:
+        - name
+        - description
+        - ownerId
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: string
+    ClubMemberRequest:
+      type: object
+      required:
+        - userId
+      properties:
+        userId:
+          type: string
