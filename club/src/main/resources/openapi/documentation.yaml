@@ -1,0 +1,186 @@
+openapi: 3.0.0
+info:
+  title: Club Service API
+  version: 1.0.0
+  description: API for managing clubs and memberships
+
+paths:
+  /api/v1/clubs/create:
+    post:
+      tags: [Clubs]
+      summary: Create a new club
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/models/ClubCreateRequest'
+      responses:
+        '201':
+          description: Club created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/models/ClubCreateResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/models/ErrorResponse'
+        '500':
+          description: Internal server error
+        '504':
+          description: Service timeout
+
+  /api/v1/clubs/{clubId}/members:
+    post:
+      tags: [Members]
+      summary: Add a member to a club
+      parameters:
+        - name: clubId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/models/ClubMemberRequest'
+      responses:
+        '200':
+          description: Member added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/models/ClubMemberResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/models/ErrorResponse'
+        '500':
+          description: Internal server error
+
+  /api/v1/clubs/{clubId}/members/{userId}:
+    delete:
+      tags: [Members]
+      summary: Remove a member from a club
+      parameters:
+        - name: clubId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/models/ClubMemberResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/models/ErrorResponse'
+        '500':
+          description: Internal server error
+
+  /api/v1/clubs/{clubId}:
+    get:
+      tags: [Clubs]
+      summary: Get club information
+      parameters:
+        - name: clubId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Club information retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/models/ClubInfoResponse'
+        '404':
+          description: Club not found
+        '500':
+          description: Internal server error
+
+components:
+  schemas:
+    Club:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: string
+        members:
+          type: array
+          items:
+            type: string
+
+    ClubCreateRequest:
+      type: object
+      required: [name, ownerId]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: string
+
+    ClubMemberRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: string
+
+    ClubCreateResponse:
+      type: object
+      properties:
+        clubId:
+          type: string
+        name:
+          type: string
+
+    ClubMemberResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          enum: [memberAdded, memberRemoved]
+        userId:
+          type: string
+        clubId:
+          type: string
+
+    ClubInfoResponse:
+      type: object
+      properties:
+        club:
+          $ref: '#/components/models/Club'
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
