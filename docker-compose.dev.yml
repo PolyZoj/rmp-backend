@@ -29,8 +29,8 @@ services:
     volumes:
       - psql_users_master_data:/var/lib/postgresql/data
       - ./db/master/init:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5433:5432"
+    expose:
+      - "5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
@@ -61,8 +61,8 @@ services:
     volumes:
       - psql_users_replica_data:/var/lib/postgresql/data
       - ./db/replica/setup-replica.sh:/docker-entrypoint-initdb.d/setup-replica.sh:ro
-    ports:
-      - "5436:5432"
+    expose:
+      - "5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
@@ -233,9 +233,9 @@ services:
       - "8080"
     environment:
       DB_HOST_MASTER: psql_users_master
-      DB_PORT_MASTER: 5433
+      DB_PORT_MASTER: 5432
       DB_HOST_REPLICA: psql_users_replica
-      DB_PORT_REPLICA: 5436
+      DB_PORT_REPLICA: 5432
       DB_NAME: user_db
       DB_USER: postgres
       DB_PASSWORD: postgres

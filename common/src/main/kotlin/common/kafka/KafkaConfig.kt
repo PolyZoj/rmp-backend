@@ -17,7 +17,7 @@ class KafkaConfig {
                 println("Topic $topicName does not exist. Creating it...")
 //                val newTopic = NewTopic(topicName, numPartitions, replicationFactor)
 //                    .configs(mapOf("min.insync.replicas" to "2"))
-                val newTopic = NewTopic(topicName, numPartitions, 1) // only in dev
+                val newTopic = NewTopic(topicName, numPartitions, 1) // TODO only in dev
                     .configs(mapOf("min.insync.replicas" to "1"))
                 val createTopicsResult = adminClient.createTopics(listOf(newTopic))
                 createTopicsResult.all().get()

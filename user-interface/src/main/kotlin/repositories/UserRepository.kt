@@ -12,6 +12,7 @@ import org.jetbrains.exposed.sql.selectAll
 import org.postgresql.util.PSQLException
 import ru.polyZoj.db.*
 import ru.polyZoj.exceptions.DuplicateFieldException
+import ru.polyZoj.logger
 import ru.polyZoj.models.UserCredentials
 import ru.polyZoj.models.UserDTO
 import ru.polyZoj.models.UserRegistration
@@ -21,6 +22,7 @@ import kotlin.time.toJavaInstant
 import kotlin.time.toKotlinInstant
 
 class UserRepository {
+    private val log = logger<UserRepository>()
     /** Look up a user’s id by username */
     fun findByUsername(username: String): Int? =
         DatabaseFactory.read {
@@ -106,11 +108,11 @@ class UserRepository {
                 .join(UserParametersTable, onColumn = UserCredentialsTable.userId, joinType = JoinType.INNER)
                 .join(UserPreferencesTable, onColumn = UserPreferencesTable.userId, joinType = JoinType.INNER)
                 .selectAll()
-                .where(UsersTable.userId eq userId)
+                .where(UsersTable.id eq userId)
         }
             .forEach { row ->
                 userDTO = UserDTO(
-                    userId = row[UsersTable.userId],
+                    userId = row[UsersTable.id].value,
                     firstName = row[UsersTable.firstName],
                     lastName = row[UsersTable.lastName],
                     email = row[UsersTable.email],
@@ -137,7 +139,7 @@ class UserRepository {
 
     fun deleteUser(userId: Int): Boolean {
         return DatabaseFactory.write {
-            val usersDeleted = UsersTable.deleteWhere { UsersTable.userId eq userId }
+            val usersDeleted = UsersTable.deleteWhere { UsersTable.id eq userId }
             val credentialsDeleted = UserCredentialsTable.deleteWhere { UserCredentialsTable.userId eq userId }
             val parametersDeleted = UserParametersTable.deleteWhere { UserParametersTable.userId eq userId }
             val preferencesDeleted = UserPreferencesTable.deleteWhere { UserPreferencesTable.userId eq userId }
