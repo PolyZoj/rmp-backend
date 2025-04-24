@@ -23,6 +23,9 @@ import ru.polyZog.models.ClubCreateRequest
 import ru.polyZog.models.ClubMemberRequest
 import ru.polyZog.models.Club
 import ru.polyZog.models.DataPayload
+import ru.polyZog.models.ClubInfoResponse
+import ru.polyZog.models.ClubCreateResponse
+import ru.polyZog.models.ClubMemberResponse
 import io.ktor.server.plugins.openapi.*
 
 
@@ -64,6 +67,16 @@ fun Application.configureRouting() {
                     params = listOf(request.name, request.description, request.ownerId)
                 )
                 
+                processClubRequest(payload, call, producer, responses, mutex, json)
+            }
+
+            get("/list") {     
+                val limit = call.parameters["limit"] ?: throw IllegalArgumentException("Missing limit")
+                val offset = call.parameters["offset"] ?: throw IllegalArgumentException("Missing offset")
+                val payload = DataPayload(
+                    message = "listClubs",
+                    params = listOf(limit.toString(), offset.toString())
+                )
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
 
@@ -134,40 +147,51 @@ private suspend fun processClubRequest(
                 mapOf<String, String>("error" to (result.params.firstOrNull() ?: "Unknown error"))
             )
 
-            else -> handleClubResponse(result, call)
+            else -> handleClubResponse(result, call, json)
         }
     } finally {
         mutex.withLock { responses.remove(correlationId) }
     }
 }
 
-private suspend fun handleClubResponse(response: DataPayload, call: ApplicationCall) {
+private suspend fun handleClubResponse(response: DataPayload, call: ApplicationCall, json: Json) {
     when (response.message) {
         "created" -> call.respond(
             HttpStatusCode.Created,
-            mapOf(
-                "clubId" to response.params.getOrNull(0),
-                "name" to response.params.getOrNull(1)
-             )
+            ClubCreateResponse(
+                response.params.get(0),
+                response.params.get(1)
+            )
         )
+
+        "clubsList" ->{
+        val clubsJson = response.params.getOrNull(0) ?: "[]"
+        val clubs = json.decodeFromString<List<Club>>(clubsJson)
+        call.respond(
+            HttpStatusCode.OK,
+            mapOf("data" to clubs)  
+        )}
 
         "memberAdded", "memberRemoved" -> call.respond(
             HttpStatusCode.OK,
-            mapOf(
-                "message" to response.message,
-                "userId" to response.params.getOrNull(0),
-                "clubId" to response.params.getOrNull(1)
+
+            ClubMemberResponse(
+                response.message,
+                response.params.get(0),
+                response.params.get(1)
             )
         )
 
         "clubInfo" -> call.respond(
             HttpStatusCode.OK,
-            mapOf(
-                "id" to response.params.getOrNull(0),
-                "name" to response.params.getOrNull(1),
-                "description" to response.params.getOrNull(2),
-                "ownerId" to response.params.getOrNull(3),
-                "members" to response.params.getOrNull(4)
+            ClubInfoResponse(
+                Club(
+                    response.params.get(0),
+                    response.params.get(1),
+                    response.params.get(2),
+                    response.params.get(3),
+                    json.decodeFromString<MutableSet<String>>(response.params.get(4))
+                )
             )
         )
 

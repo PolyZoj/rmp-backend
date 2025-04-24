@@ -26,4 +26,8 @@ object ClubDataSource {
         val club = clubs[clubId] ?: return false
         return club.members.remove(userId)
     }
+
+    fun getClubs(limit: Int, offset: Int): List<Club> {
+        return clubs.values.drop(offset).take(limit).toList()
+    }
 }

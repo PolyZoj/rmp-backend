@@ -64,6 +64,7 @@ fun Application.module() {
             println(payload)
             when (payload.message.lowercase()) {
                 "create" -> handleCreateClub(payload, conversationId, producerService)
+                "listclubs" -> handleListClubs(payload, conversationId, producerService)
                 "addmember" -> handleAddMember(payload, conversationId, producerService)
                 "removemember" -> handleRemoveMember(payload, conversationId, producerService)
                 "getinfo" -> handleGetInfo(payload, conversationId, producerService)
@@ -94,6 +95,23 @@ private fun handleCreateClub(
     val response = DataPayload(
         message = "created",
         params = listOf(club.id, club.name)
+    )
+    producer.send("club-responses", conversationId, Json.encodeToString(response))
+}
+
+private fun handleListClubs(
+    payload: DataPayload,
+    conversationId: String,
+    producer: KafkaProducerService
+) {
+    val limit = payload.params.getOrNull(0)?.toIntOrNull() ?: 10
+    val offset = payload.params.getOrNull(1)?.toIntOrNull() ?: 0
+    
+    val clubs = ClubDataSource.getClubs(limit, offset)
+    
+    val response = DataPayload(
+        message = "clubsList",
+        params = clubs.map { Json.encodeToString(clubs) },
     )
     producer.send("club-responses", conversationId, Json.encodeToString(response))
 }
@@ -159,7 +177,7 @@ private fun handleGetInfo(
     if (club != null) {
         val response = DataPayload(
             message = "clubInfo",
-            params = listOf(club.id, club.name, club.description, club.ownerId, club.members.toString())
+            params = listOf(club.id, club.name, club.description, club.ownerId, Json.encodeToString(club.members))
         )
         producer.send("club-responses", conversationId, Json.encodeToString(response))
     } else {
@@ -174,3 +192,4 @@ private fun sendError(conversationId: String, message: String, producer: KafkaPr
     )
     producer.send("club-responses", conversationId, Json.encodeToString(response))
 }
+
