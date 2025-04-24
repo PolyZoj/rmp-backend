@@ -92,7 +92,7 @@ fun Application.module() {
                     producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
                     return@startConsuming
                 }
-                val requestPayload = DataPayload("login", listOf(username))
+                val requestPayload = DataPayload("login", listOf(username, password))
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 

@@ -2,9 +2,23 @@ package ru.polyZoj.db
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.Slf4jSqlDebugLogger
+import org.jetbrains.exposed.sql.StdOutSqlLogger
+import org.jetbrains.exposed.sql.Transaction
+import org.jetbrains.exposed.sql.addLogger
+import org.jetbrains.exposed.sql.transactions.transaction
+import ru.polyZoj.logger
 import java.sql.SQLException
 
 class DataSourceConfig {
+    private val log = logger<DataSourceConfig>()
     private val masterDs: HikariDataSource
     private val replicaDs: HikariDataSource
 
@@ -45,22 +59,55 @@ class DataSourceConfig {
             }
         } catch (_: Exception) { false }
 
+    private fun checkReplicaOnce(): Boolean {
+        val replicaAvailable = isAvailable(replicaDs)
+        val primaryAvailable = isAvailable(masterDs)
+        if (!replicaAvailable) return false
+        if (!primaryAvailable) return true
+        return isPrimary(replicaDs)
+    }
+
+    @Volatile private var useReplica = checkReplicaOnce()
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    init {
+        scope.launch {
+            while (isActive) {
+                delay(1000)
+                useReplica = checkReplicaOnce()
+                log.debug("Checking replica on: $useReplica")
+            }
+        }
+    }
+
+    val masterDb  = Database.connect(masterDs)
+    val replicaDb = Database.connect(replicaDs)
+
     /**
      * Wraps a write transaction: always targets whichever node is currently primary.
      */
-    fun <T> withWrite(block: org.jetbrains.exposed.sql.Transaction.() -> T): T {
-        val ds = if (isPrimary(masterDs)) masterDs else replicaDs
-        val db = org.jetbrains.exposed.sql.Database.connect(ds)
-        return org.jetbrains.exposed.sql.transactions.transaction(db) { block() }
+    fun <T> withWrite(block: Transaction.() -> T): T {
+        val db = if (isPrimary(masterDs)) masterDb else replicaDb
+        return transaction(db) {
+            log.debug("Writing database {}", db)
+            addLogger(StdOutSqlLogger)
+            addLogger(Slf4jSqlDebugLogger)
+            block()
+        }
     }
 
     /**
      * Wraps a read‑only transaction: prefers the replica if available & standby,
      * otherwise reads from primary.
      */
-    fun <T> withRead(block: org.jetbrains.exposed.sql.Transaction.() -> T): T {
-        val ds = if (isAvailable(replicaDs) && !isPrimary(replicaDs)) replicaDs else masterDs
-        val db = org.jetbrains.exposed.sql.Database.connect(ds)
-        return org.jetbrains.exposed.sql.transactions.transaction(db) { block() }
+    fun <T> withRead(block: Transaction.() -> T): T {
+        val db = if (useReplica) replicaDb else masterDb
+        return transaction(db) {
+            log.debug("Reading database {}", db)
+            addLogger(StdOutSqlLogger)
+            addLogger(Slf4jSqlDebugLogger)
+            block()
+        }
     }
 }

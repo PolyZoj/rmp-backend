@@ -40,18 +40,6 @@ fun Application.module() {
     val ds = DataSourceConfig()
     DatabaseFactory.init(ds)
 
-    DatabaseFactory.write {
-        arrayOf(
-            UsersTable,
-            UserCredentialsTable,
-            UnitSystemsTable,
-            EnergySystemsTable,
-            PrimaryHealthGoalsTable,
-            UserParametersTable,
-            UserPreferencesTable
-        )
-    }
-
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
 
