@@ -154,12 +154,20 @@ private fun Application.createKafkaTopics() {
 
     val admin = AdminClient.create(adminProps)
     
+//    val topics = listOf(
+//        NewTopic("auth-requests", 1, 3.toShort())
+//            .configs(mapOf("min.insync.replicas" to "2")),
+//        NewTopic("auth-responses", 1, 3.toShort())
+//            .configs(mapOf("min.insync.replicas" to "2"))
+//    )
+    // TODO: set above for production
     val topics = listOf(
-        NewTopic("auth-requests", 1, 3.toShort())
-            .configs(mapOf("min.insync.replicas" to "2")),
-        NewTopic("auth-responses", 1, 3.toShort())
-            .configs(mapOf("min.insync.replicas" to "2"))
+        NewTopic("auth-requests", 1, 1.toShort())
+            .configs(mapOf("min.insync.replicas" to "1")),
+        NewTopic("auth-responses", 1, 1.toShort())
+            .configs(mapOf("min.insync.replicas" to "1"))
     )
+
 
     try {
         admin.createTopics(topics).all().get()

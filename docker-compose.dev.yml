@@ -224,7 +224,7 @@ services:
       args:
         SERVICE: user-interface
         <<: *build-args
-    image: rmp-backend-user-service
+    image: rmp-backend-user-interface
     depends_on:
       - psql_users_master
       - psql_users_replica
@@ -276,7 +276,7 @@ services:
       args:
         SERVICE: user
         <<: *build-args
-    image: rmp-backend-user-service
+    image: rmp-backend-user
     depends_on:
       - user-service
       - kafka

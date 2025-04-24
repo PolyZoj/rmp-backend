@@ -2,14 +2,12 @@ package ru.polyZoj.routing
 
 import common.DataPayload
 import common.kafka.KafkaConfig
-import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.RequestProcessor
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
 import io.ktor.http.*
 import io.ktor.server.application.*
-import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.CompletableDeferred
@@ -19,12 +17,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
-import java.util.UUID
-import java.util.concurrent.CompletableFuture
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
+inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
 
 fun Application.configureRouting() {
+    val log = logger<Application>()
+
     val kafkaConfig = KafkaConfig()
     kafkaConfig.createTopicIfNotExists("user-gateway-requests", 1, 3.toShort())
     kafkaConfig.createTopicIfNotExists("user-gateway-responses", 1, 3.toShort())
@@ -63,12 +64,14 @@ fun Application.configureRouting() {
             // GET /users/{id} - получение информации о конкретном пользователе
             get("/{id}") {
                 val id = call.parameters["id"]?.toIntOrNull()
+                log.info("GET /api/v1/users/{}", id)
                 if (id == null) {
                     call.respond(HttpStatusCode.BadRequest, "Некорректный id пользователя")
                     return@get
                 }
 
                 val requestPayload = DataPayload("userInfo", listOf(id.toString()))
+                log.info("sending request to user-gateway-requests: {}", requestPayload)
                 reqProcessor.processAuthRequest(
                     requestPayload,
                     "user-gateway-requests",
@@ -85,8 +88,10 @@ fun Application.configureRouting() {
 
             // PUT /users/{id} - обновление информации о пользователе
             put("/{id}") {
+                log.info("PUT /api/v1/users/{id}")
                 val id = call.parameters["id"]?.toLongOrNull()
                 if (id == null) {
+                    log.debug("PUT /api/v1/users/{id}, id is null")
                     call.respond(HttpStatusCode.BadRequest, "Некорректный id пользователя")
                     return@put
                 }
@@ -106,8 +111,10 @@ fun Application.configureRouting() {
 
             // DELETE /users/{id} - удаление пользователя
             delete("/{id}") {
+                log.info("DELETE /api/v1/users/{id}")
                 val id = call.parameters["id"]?.toLongOrNull()
                 if (id == null) {
+                    log.debug("DELETE /api/v1/users/{id}")
                     call.respond(HttpStatusCode.BadRequest, "Некорректный id пользователя")
                     return@delete
                 }

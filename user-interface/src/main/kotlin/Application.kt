@@ -13,6 +13,8 @@ import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import ru.polyZoj.models.UserRegistration
 import ru.polyZoj.repositories.UserRepository
 import java.time.LocalDate
@@ -20,6 +22,8 @@ import java.time.LocalDate
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
+
+inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
 
 fun Application.module() {
 
@@ -30,6 +34,8 @@ fun Application.module() {
             ignoreUnknownKeys = true
         })
     }
+
+    val log = logger<Application>()
 
     val ds = DataSourceConfig()
     DatabaseFactory.init(ds)
@@ -55,11 +61,13 @@ fun Application.module() {
     val userRepository = UserRepository()
 
     consumerService.startConsuming { conversationId, message ->
+        log.info("Received message: $message")
         val data = Json.decodeFromString<DataPayload>(message)
         val command = data.message
         val args = data.params
         when (command) {
             "login" -> {
+                log.info("Login command received, args: $args")
                 val username = args.getOrNull(0)
                 val password = args.getOrNull(1)
                 var response: DataPayload
@@ -73,10 +81,12 @@ fun Application.module() {
                         DataPayload("error", listOf("Invalid credentials"))
                     }
                 }
+                log.info("sending response to user-responses: $response")
                 producerService.send("user-responses", conversationId, Json.encodeToString(response))
             }
 
             "findByUsername" -> {
+                log.info("Find by username command received, args: $args")
                 val username = args.getOrNull(0)
                 if (username == null) {
                     val err = DataPayload("error", listOf("Missing username"))
@@ -88,11 +98,13 @@ fun Application.module() {
                     } else {
                         DataPayload("error", listOf("User not found"))
                     }
+                    log.info("sending response to user-responses: $resp")
                     producerService.send("user-responses", conversationId, Json.encodeToString(resp))
                 }
             }
 
             "createUser" -> {
+                log.info("Create user command received, args: $args")
                 val reg = UserRegistration(
                     firstName = args.getOrNull(0) ?: throw IllegalArgumentException("First name is required"),
                     lastName = args.getOrNull(1) ?: throw IllegalArgumentException("Last name is required"),
@@ -118,6 +130,7 @@ fun Application.module() {
                 try {
                     val newId = userRepository.registerUser(reg)
                     val resp = DataPayload(newId.toString(), listOf(newId.toString()))
+                    log.info("User created successfully, sending response: $resp")
                     producerService.send("user-responses", conversationId, Json.encodeToString(resp))
 
                 } catch (e: DuplicateFieldException) {
@@ -127,15 +140,18 @@ fun Application.module() {
                         else -> "Duplicate field: ${e.fieldName}"
                     }
                     val errPayload = DataPayload("error", listOf(errorMsg))
+                    log.error("Error creating user: $errorMsg", e)
                     producerService.send("user-responses", conversationId, Json.encodeToString(errPayload))
                 } catch (e: Exception) {
                     // fallback for any other failure
                     val errPayload = DataPayload("Internal server error, please try again later.", emptyList())
+                    log.error("Error creating user: ${e.message}", e)
                     producerService.send("user-responses", conversationId, Json.encodeToString(errPayload))
                 }
             }
 
             "getUserDTO" -> {
+                log.info("Get user DTO command received, args: $args")
                 val userId = args.getOrNull(0)
                 if (userId == null) {
                     val err = DataPayload("error", listOf("Missing user ID"))
@@ -153,6 +169,7 @@ fun Application.module() {
             }
 
             "updateUserDTO" -> {
+                log.info("Update user DTO command received, args: $args")
                 val userId = args.getOrNull(0)
                 if (userId == null) {
                     val err = DataPayload("error", listOf("Missing user ID"))
@@ -171,6 +188,7 @@ fun Application.module() {
             }
 
             "deleteUser" -> {
+                log.info("Delete user command received, args: $args")
                 val userId = args.getOrNull(0)
                 if (userId == null) {
                     val err = DataPayload("error", listOf("Missing user ID"))
@@ -189,6 +207,7 @@ fun Application.module() {
 
             else -> {
                 val err = DataPayload("error", listOf("Unknown command"))
+                log.error("Unknown command: $command")
                 producerService.send("user-responses", conversationId, Json.encodeToString(err))
             }
         }

@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.kafka.clients)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.ktor.server.core)
+    implementation(libs.logback.classic)
 }
 
 tasks.test {

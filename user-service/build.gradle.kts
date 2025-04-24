@@ -36,6 +36,7 @@ dependencies {
     implementation(libs.exposed.java.time)
     implementation("com.auth0:java-jwt:4.4.0")
     implementation("io.ktor:ktor-server-config-yaml:2.3.7")
+    implementation(libs.logback.classic)
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)

@@ -18,6 +18,8 @@ import java.util.concurrent.ConcurrentHashMap
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import common.kafka.KafkaConfig
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 import java.util.Date
 
@@ -46,7 +48,11 @@ fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
+inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
+
 fun Application.module() {
+    val log = logger<Application>()
+
     val jwtConfig = JwtConfig.fromConfig(environment.config)
 
     install(ContentNegotiation) {
@@ -72,6 +78,7 @@ fun Application.module() {
 
     val authConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("auth-requests"))
     authConsumer.startConsuming { conversationId, message ->
+        log.info("Received auth request: $message")
         val data = Json.decodeFromString<DataPayload>(message)
         val command = data.message
         val username = data.params.getOrNull(0)
@@ -79,6 +86,7 @@ fun Application.module() {
 
         when (command) {
             "login" -> {
+                log.info("login, username: $username, password: $password")
                 if (username == null || password == null) {
                     val msg = DataPayload("user-service", listOf("Invalid credentials"))
                     producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
@@ -88,23 +96,27 @@ fun Application.module() {
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
+                log.info("sending request to user-requests: $requestPayload")
                 producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
                     if (error != null || response.params.isEmpty()) {
+                        log.warn("Received from user-interface: $response")
                         val msg = DataPayload("error", listOf("Invalid credentials"))
                         producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
                         return@whenComplete
                     }
-
+                    log.info("Received from user-interface: $response")
                     val userId = response.params[0]
                     val token = generateToken(User(userId, username, ""), jwtConfig)
                     val msg = DataPayload(userId, listOf(token))
+                    log.info("sending request to auth-responses: $msg")
                     producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
                 }
             }
 
             "register" -> {
+                log.info("register, username: $username, password: $password")
                 if (username == null || password == null) {
                     val msg = DataPayload("user-service", listOf("Invalid credentials"))
                     producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
@@ -114,23 +126,27 @@ fun Application.module() {
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
+                log.info("sending request to user-requests: $requestPayload")
                 producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
                     if (error != null) {
+                        log.warn("Received from user-interface: $response")
                         val msg = DataPayload("user-service", listOf("Error creating user"))
                         producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
                         return@whenComplete
                     }
-
+                    log.info("Received from user-interface: $response")
                     val userId = response.params.getOrNull(0) ?: "unknown"
                     val msg = DataPayload(userId, listOf("Success register"))
+                    log.info("sending request to auth-responses: $msg")
                     producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
                 }
             }
 
             else -> {
                 val msg = DataPayload("user-service", listOf("Unknown command"))
+                log.warn("Unknown command: $command" ,"\n", "sending to auth-responses: $msg")
                 producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
             }
         }
@@ -138,11 +154,13 @@ fun Application.module() {
 
     val userConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("user-gateway-requests"))
     userConsumer.startConsuming { conversationId, message ->
+        log.info("Received user request: $message")
         val data = Json.decodeFromString<DataPayload>(message)
         val command = data.message
         val args = data.params
         when (command) {
             "userInfo" -> {
+                log.info("userInfo, args: $args")
                 val userId = args.getOrNull(0)
                 if (userId == null) {
                     val msg = DataPayload("user-service", listOf("Invalid credentials"))
@@ -152,6 +170,8 @@ fun Application.module() {
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
+
+                log.info("sending request to user-requests: $requestPayload")
                 producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
@@ -162,12 +182,14 @@ fun Application.module() {
                     }
                     val userDTO = response.params.getOrNull(0)
                     val msg = DataPayload("user-service", listOf(userDTO.toString()))
+                    log.info("sending request to user-gateway-responses: $msg")
                     producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
                 }
 
             }
 
             "findByUsername" -> {
+                log.info("findByUsername, args: $args")
                 val username = args.getOrNull(0)
                 if (username == null) {
                     val msg = DataPayload("user-service", listOf("Invalid credentials"))
@@ -177,6 +199,7 @@ fun Application.module() {
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
+                log.info("sending request to user-requests: $requestPayload")
                 producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
@@ -187,11 +210,13 @@ fun Application.module() {
                     }
                     val userId = response.params.getOrNull(0)
                     val msg = DataPayload("user-service", listOf(userId.toString()))
+                    log.info("sending request to user-gateway-responses: $msg")
                     producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
                 }
             }
 
             "updateUserInfo" -> {
+                log.info("updateUserInfo, args: $args")
                 val userId = args.getOrNull(0)
                 if (userId == null) {
                     val msg = DataPayload("user-service", listOf("Invalid credentials"))
@@ -201,6 +226,7 @@ fun Application.module() {
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
+                log.info("sending request to user-requests: $requestPayload")
                 producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
@@ -211,11 +237,13 @@ fun Application.module() {
                     }
                     val userDTO = response.params.getOrNull(0)
                     val msg = DataPayload("user-service", listOf(userDTO.toString()))
+                    log.info("sending request to user-gateway-responses: $msg")
                     producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
                 }
             }
 
             "deleteUser" -> {
+                log.info("deleteUser, args: $args")
                 val userId = args.getOrNull(0)
                 if (userId == null) {
                     val msg = DataPayload("user-service", listOf("Invalid credentials"))
@@ -225,6 +253,7 @@ fun Application.module() {
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
+                log.info("sending request to user-requests: $requestPayload")
                 producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
@@ -236,9 +265,11 @@ fun Application.module() {
                     val success = response.message
                     if (success == "success") {
                         val msg = DataPayload("user-service", listOf("Successfully deleted"))
+                        log.info("sending request to user-gateway-responses: $msg")
                         producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
                     } else {
                         val msg = DataPayload("user-service", listOf("Error deleting user"))
+                        log.info("sending request to user-gateway-responses: $msg")
                         producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
                     }
                 }
@@ -246,6 +277,7 @@ fun Application.module() {
 
             else -> {
                 val msg = DataPayload("user-service", listOf("Unknown command"))
+                log.warn("Unknown command: $command" ,"\n", "sending to user-gateway-responses: $msg")
                 producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
             }
         }
