@@ -2,8 +2,8 @@
 
 set -e
 MASTER_HOST=${1:?Usage: $0 <master-host>}
- CHECK_INTERVAL=5
- ONLINE_SERVICES=("1.1.1.1" "google.com" "8.8.8.8")
+CHECK_INTERVAL=5
+ONLINE_SERVICES=("1.1.1.1" "google.com" "8.8.8.8")
 
  while true; do
    if ! ping -c1 "$MASTER_HOST" >/dev/null 2>&1; then
