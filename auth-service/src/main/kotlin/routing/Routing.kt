@@ -1,4 +1,4 @@
-package ru.polyZog.routing
+package ru.polyZoj.routing
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
@@ -10,18 +10,17 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
-import ru.polyZog.models.LoginRequest
-import ru.polyZog.models.RegisterRequest
-import ru.polyZog.models.TokenResponse
-import ru.polyZog.models.User
+import ru.polyZoj.models.LoginRequest
+import ru.polyZoj.models.RegisterRequest
+import ru.polyZoj.models.TokenResponse
+import common.DataPayload
+import common.kafka.RequestProcessor
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
-import ru.polyZog.models.DataPayload
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.common.errors.TopicExistsException
@@ -37,6 +36,7 @@ fun Application.configureRouting() {
     val consumer = KafkaConsumer<String, String>(consumerConfig("auth-consumer"))
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
+    val reqProcessor = RequestProcessor()
     
     createKafkaTopics()
 
@@ -67,7 +67,7 @@ fun Application.configureRouting() {
                     message = "register",
                     params = listOf(request.username, request.password)
                 )
-                processAuthRequest(payload, call, producer, responses, mutex, json)
+                reqProcessor.processAuthRequest(payload, "auth-requests", call, producer, responses, mutex, json, ::handleSuccessfulResponse)
             }
 
             post("/login") {
@@ -76,55 +76,13 @@ fun Application.configureRouting() {
                     message = "login",
                     params = listOf(request.username, request.password)
                 )
-                processAuthRequest(payload, call, producer, responses, mutex, json)
+                reqProcessor.processAuthRequest(payload, "auth-requests", call, producer, responses, mutex, json, ::handleSuccessfulResponse)
             }
         }
     }
 }
 
-private suspend fun processAuthRequest(
-    payload: DataPayload,
-    call: ApplicationCall,
-    producer: KafkaProducer<String, String>,
-    responses: ConcurrentHashMap<String, CompletableDeferred<DataPayload>>,
-    mutex: Mutex,
-    json: Json
-) {
-    val correlationId = UUID.randomUUID().toString()
-    val responseDeferred = CompletableDeferred<DataPayload>()
-
-    mutex.withLock {
-        responses[correlationId] = responseDeferred
-    }
-
-    producer.send(ProducerRecord(
-        "auth-requests",
-        correlationId,
-        json.encodeToString(payload)
-    ))
-
-    try {
-        val result = withTimeoutOrNull(5000) { responseDeferred.await() }
-
-        when {
-            result == null -> call.respond(
-                HttpStatusCode.GatewayTimeout,
-                mapOf("error" to "Authentication service timeout")
-            )
-
-            result.message.startsWith("error:") -> call.respond(
-                HttpStatusCode.BadRequest,
-                mapOf("error" to result.message.removePrefix("error:"))
-            )
-
-            else -> handleSuccessfulResponse(payload.message, result, call)
-        }
-    } finally {
-        mutex.withLock { responses.remove(correlationId) }
-    }
-}
-
-suspend private fun handleSuccessfulResponse(
+private suspend fun handleSuccessfulResponse(
     operation: String,
     result: DataPayload,
     call: ApplicationCall
@@ -196,12 +154,20 @@ private fun Application.createKafkaTopics() {
 
     val admin = AdminClient.create(adminProps)
     
+//    val topics = listOf(
+//        NewTopic("auth-requests", 1, 3.toShort())
+//            .configs(mapOf("min.insync.replicas" to "2")),
+//        NewTopic("auth-responses", 1, 3.toShort())
+//            .configs(mapOf("min.insync.replicas" to "2"))
+//    )
+    // TODO: set above for production
     val topics = listOf(
-        NewTopic("auth-requests", 1, 3.toShort())
-            .configs(mapOf("min.insync.replicas" to "2")),
-        NewTopic("auth-responses", 1, 3.toShort())
-            .configs(mapOf("min.insync.replicas" to "2"))
+        NewTopic("auth-requests", 1, 1.toShort())
+            .configs(mapOf("min.insync.replicas" to "1")),
+        NewTopic("auth-responses", 1, 1.toShort())
+            .configs(mapOf("min.insync.replicas" to "1"))
     )
+
 
     try {
         admin.createTopics(topics).all().get()

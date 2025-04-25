@@ -1,5 +1,3 @@
-version: '3.8'
-
 x-microservice-common: &microservice-common
   restart: on-failure
   networks:

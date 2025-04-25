@@ -1,1 +1,3 @@
-rootProject.name = "user-service"
+rootProject.name = "user-interface"
+
+includeBuild("../common")

@@ -21,6 +21,7 @@ repositories {
 }
 
 dependencies {
+    implementation("ru.polyZoj:common")
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.config.yaml)
@@ -35,6 +36,7 @@ dependencies {
     implementation(libs.exposed.java.time)
     implementation("com.auth0:java-jwt:4.4.0")
     implementation("io.ktor:ktor-server-config-yaml:2.3.7")
+    implementation(libs.logback.classic)
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)

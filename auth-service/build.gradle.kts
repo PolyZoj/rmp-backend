@@ -5,7 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "1.8.21"
 }
 
-group = "ru.polyZog"
+group = "ru.polyZoj"
 version = "0.0.1"
 
 application {
@@ -20,6 +20,7 @@ repositories {
 }
 
 dependencies {
+    implementation("ru.polyZoj:common")
     implementation(libs.ktor.simple.cache)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.simple.redis.cache)
@@ -38,5 +39,15 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
     implementation("io.ktor:ktor-client-core:2.3.2")
     implementation("io.ktor:ktor-client-cio:2.3.2") 
-    implementation("org.apache.kafka:kafka-clients:3.5.1")
+    implementation("org.apache.kafka:kafka-clients:3.7.1")
+}
+
+tasks.register("downloadDependencies") {
+    doLast {
+        configurations
+            .filter { it.isCanBeResolved }
+            .forEach { configuration ->
+                configuration.resolve()
+            }
+    }
 }

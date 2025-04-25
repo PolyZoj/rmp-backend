@@ -1,9 +1,9 @@
-package ru.polyZog
+package ru.polyZoj
 
 import io.ktor.server.application.*
-import ru.polyZog.configs.configureHTTP
-import ru.polyZog.routing.configureRouting
-import ru.polyZog.configs.configureSecurity
+import ru.polyZoj.configs.configureHTTP
+import ru.polyZoj.routing.configureRouting
+import ru.polyZoj.configs.configureSecurity
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.application.*
