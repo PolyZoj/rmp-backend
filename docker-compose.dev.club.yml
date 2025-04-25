@@ -1,43 +1,12 @@
+version: '3.8'
+
 x-microservice-common: &microservice-common
   restart: on-failure
   networks:
     - backend_net
   labels:
     - "com.docker.compose.project=rmp-backend"
-
 services:
-  auth-service:
-    build: ./auth-service
-    ports:
-      - "8080"
-    depends_on:
-      - redis
-      - kafka
-    environment:
-      - JWT_AUDIENCE=jwt-audience
-      - JWT_DOMAIN=https://jwt-provider-domain
-      - JWT_REALM=ktor-realm
-      - JWT_SECRET=secret
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
-
-  user-service:
-    build: ./user-service
-    ports:
-      - "8080"
-    depends_on:
-      - redis
-      - kafka
-    environment:
-      - JWT_AUDIENCE=jwt-audience
-      - JWT_DOMAIN=https://jwt-provider-domain
-      - JWT_REALM=ktor-realm
-      - JWT_SECRET=secret
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
-
   club-service:
     build: ./club-service
     ports:
@@ -88,7 +57,6 @@ services:
       - "8084:8084"
       - "8085:8085"
     depends_on:
-      - auth-service
       - club-gateway
     networks:
       - backend_net

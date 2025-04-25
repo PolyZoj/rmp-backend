@@ -1,3 +1,5 @@
+version: '3.8'
+
 x-microservice-common: &microservice-common
   restart: on-failure
   networks:
@@ -7,69 +9,19 @@ x-microservice-common: &microservice-common
 
 services:
   auth-service:
-    build: ./auth-service
+    build: .
     ports:
       - "8080"
     depends_on:
       - redis
-      - kafka
     environment:
       - JWT_AUDIENCE=jwt-audience
       - JWT_DOMAIN=https://jwt-provider-domain
       - JWT_REALM=ktor-realm
       - JWT_SECRET=secret
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     networks:
       - backend_net
 
-  user-service:
-    build: ./user-service
-    ports:
-      - "8080"
-    depends_on:
-      - redis
-      - kafka
-    environment:
-      - JWT_AUDIENCE=jwt-audience
-      - JWT_DOMAIN=https://jwt-provider-domain
-      - JWT_REALM=ktor-realm
-      - JWT_SECRET=secret
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
-
-  club-service:
-    build: ./club-service
-    ports:
-      - "8080"
-    depends_on:
-      - redis
-      - kafka
-      - club-gateway
-    environment:
-      - JWT_AUDIENCE=jwt-audience
-      - JWT_DOMAIN=https://jwt-provider-domain
-      - JWT_REALM=ktor-realm
-      - JWT_SECRET=secret
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
-
-  club-gateway:
-    build: ./club
-    ports:
-      - "8080"
-    depends_on:
-      - redis
-      - kafka
-    environment:
-      - JWT_AUDIENCE=jwt-audience
-      - JWT_DOMAIN=https://jwt-provider-domain
-      - JWT_REALM=ktor-realm
-      - JWT_SECRET=secret
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-    networks:
-      - backend_net
   redis:
     image: "redis:alpine"
     ports:
@@ -89,7 +41,6 @@ services:
       - "8085:8085"
     depends_on:
       - auth-service
-      - club-gateway
     networks:
       - backend_net
 
