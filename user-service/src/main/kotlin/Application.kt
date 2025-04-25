@@ -100,7 +100,7 @@ fun Application.module() {
                 producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
 
                 future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
-                    if (error != null || response.params.isEmpty()) {
+                    if (error != null || response.params.isEmpty() || response.message == "error") {
                         log.warn("Received from user-interface: $response")
                         val msg = DataPayload("error", listOf("Invalid credentials"))
                         producerService.send("auth-responses", conversationId, Json.encodeToString(msg))

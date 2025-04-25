@@ -32,7 +32,7 @@ class DataSourceConfig {
             isAutoCommit = false
             transactionIsolation = "TRANSACTION_REPEATABLE_READ"
             // simple health-check
-            healthCheckProperties["connectTimeout"] = "1000"
+            healthCheckProperties["connectTimeout"] = "5000"
         }
 
         masterDs  = HikariDataSource(cfg(env("DB_HOST_MASTER"), env("DB_PORT_MASTER")))
@@ -74,7 +74,7 @@ class DataSourceConfig {
     init {
         scope.launch {
             while (isActive) {
-                delay(1000)
+                delay(5000)
                 useReplica = checkReplicaOnce()
                 log.debug("Checking replica on: $useReplica")
             }
