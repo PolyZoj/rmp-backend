@@ -303,22 +303,6 @@ services:
           cpus: "0.75"
           memory: 512M
 
-#  notification-service:
-#    build:
-#      context: .
-#      dockerfile: notification-service/Dockerfile
-#      args:
-#        <<: *build-args
-#        SERVICE: notification-service
-#    image: rmp-backend-notification-service
-#    depends_on:
-#      - kafka
-#    expose:
-#      - "8080"
-#    environment:
-#      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-#    <<: *microservice-common
-
 #  challenges-service:
 #    build:
 #      context: .
@@ -365,21 +349,6 @@ services:
   #
   #    # Microservices
   #    # Internal
-#  payment-service:
-#    build:
-#      context: .
-#      dockerfile: payment-service/Dockerfile
-#      args:
-#        <<: *build-args
-#        SERVICE: payment-service
-#    image: rmp-backend-payment-service
-#    depends_on:
-#      - kafka
-#    expose:
-#      - "8080"
-#    environment:
-#      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-#    <<: *microservice-common
 
 #  stats-service:
 #    build:
@@ -398,28 +367,6 @@ services:
 #      - CLICKHOUSE_HOST=clickhouse
 #      - CLICKHOUSE_PORT=8123
 #      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-#    <<: *microservice-common
-
-#  gamification-service:
-#    build:
-#      context: .
-#      dockerfile: gamification-service/Dockerfile
-#      args:
-#        <<: *build-args
-#        SERVICE: gamification-service
-#    image: rmp-backend-gamification-service
-#    depends_on:
-#      - kafka
-#    expose:
-#      - "8080"
-#    environment:
-#      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-#    deploy:
-#      replicas: 3
-#      resources:
-#        limits:
-#          cpus: "0.50"
-#          memory: 512M
 #    <<: *microservice-common
 
 #  log-service:
@@ -449,13 +396,11 @@ services:
     ports:
       - "8081:8081"
       - "8082:8082"
-      - "8083:8083"
       - "8084:8084"
       - "8085:8085"
     depends_on:
       - auth-service
       - user
-      #- notification-service
       #- challenges-service
       #- club-service
     networks:
