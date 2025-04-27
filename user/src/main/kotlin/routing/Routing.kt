@@ -2,7 +2,6 @@ package ru.polyZoj.routing
 
 import common.DataPayload
 import common.kafka.KafkaConfig
-import common.kafka.KafkaProducerService
 import common.kafka.RequestProcessor
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
@@ -35,7 +34,6 @@ fun Application.configureRouting() {
     val reqProcessor = RequestProcessor()
 
     val kafkaProducer = createKafkaProducer()
-    val producerService = KafkaProducerService(kafkaProducer)
 
     val consumer = createKafkaConsumer("user-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
@@ -45,11 +43,14 @@ fun Application.configureRouting() {
             records.forEach { record ->
                 mutex.withLock {
                     try {
-                        val responsePayload = Json.decodeFromString<DataPayload>(record.value())
+                        val responsePayload = record.value()
                         pendingResponses[record.key()]?.complete(responsePayload)
                     } catch (e: Exception) {
                         pendingResponses[record.key()]?.complete(
-                            DataPayload("error", listOf())
+                            DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Failed to process response: ${e.message}"
+                            )
                         )
                     }
                 }
@@ -70,16 +71,17 @@ fun Application.configureRouting() {
                     return@get
                 }
 
-                val requestPayload = DataPayload("userInfo", listOf(id.toString()))
+                val requestPayload = DataPayload.build("userInfo") {
+                    param("id", id)
+                }
                 log.info("sending request to user-gateway-requests: {}", requestPayload)
-                reqProcessor.processAuthRequest(
+                reqProcessor.processRequest(
                     requestPayload,
                     "user-gateway-requests",
                     call,
                     kafkaProducer,
                     pendingResponses,
                     mutex,
-                    Json,
                     ::handleSuccessfulResponse
                 )
             }
@@ -96,15 +98,17 @@ fun Application.configureRouting() {
                     return@put
                 }
 
-                val requestPayload = DataPayload("updateUserInfo", listOf(id.toString()))
-                reqProcessor.processAuthRequest(
+                // TODO: Получить данные из тела запроса, а не просто id
+                val requestPayload = DataPayload.build("updateUserInfo") {
+                    param("id", id)
+                }
+                reqProcessor.processRequest(
                     requestPayload,
                     "user-gateway-requests",
                     call,
                     kafkaProducer,
                     pendingResponses,
                     mutex,
-                    Json,
                     ::handleSuccessfulResponse
                 )
             }
@@ -119,15 +123,16 @@ fun Application.configureRouting() {
                     return@delete
                 }
 
-                val requestPayload = DataPayload("deleteUser", listOf(id.toString()))
-                reqProcessor.processAuthRequest(
+                val requestPayload = DataPayload.build("updateUserInfo") {
+                    param("id", id)
+                }
+                reqProcessor.processRequest(
                     requestPayload,
                     "user-gateway-requests",
                     call,
                     kafkaProducer,
                     pendingResponses,
                     mutex,
-                    Json,
                     ::handleSuccessfulResponse
                 )
 

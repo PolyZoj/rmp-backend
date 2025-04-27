@@ -1,6 +1,6 @@
-package ru.polyZog.repositories
+package ru.polyZoj.repositories
 
-import ru.polyZog.models.Club
+import ru.polyZoj.models.Club
 import java.util.*
 
 object ClubDataSource {

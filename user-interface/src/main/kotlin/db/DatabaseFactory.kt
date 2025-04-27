@@ -21,8 +21,10 @@ object DatabaseFactory {
                 UnitSystemsTable,
                 EnergySystemsTable,
                 PrimaryHealthGoalsTable,
+                FriendshipStatusesTable,
                 UserParametersTable,
-                UserPreferencesTable
+                UserPreferencesTable,
+                FriendshipsTable
             )
         }
     }

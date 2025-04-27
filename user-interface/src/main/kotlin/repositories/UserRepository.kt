@@ -11,11 +11,12 @@ import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.selectAll
 import org.postgresql.util.PSQLException
 import ru.polyZoj.db.*
-import ru.polyZoj.exceptions.DuplicateFieldException
+import common.exceptions.DuplicateFieldException
 import ru.polyZoj.logger
-import ru.polyZoj.models.UserCredentials
-import ru.polyZoj.models.UserDTO
-import ru.polyZoj.models.UserRegistration
+import common.models.User
+import common.models.UserCredentials
+import common.models.UserDTO
+import common.models.UserRegistration
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaInstant
@@ -60,51 +61,78 @@ class UserRepository {
 
     /** Create a brand‐new user (all tables) and return their new user_id */
     @OptIn(ExperimentalTime::class)
-    fun registerUser(reg: UserRegistration): Int {
-        log.info("Registering new user: username='{}', email='{}'", reg.username, reg.email)
+    fun createUser(reg: UserRegistration): Int {
+        log.info("Registering new user: username='{}'", reg.username)
         try {
             val newUserId = DatabaseFactory.write {
                 // 1) users
                 val userId = UsersTable
                     .insertAndGetId {
-                        it[firstName] = reg.firstName
-                        it[lastName] = reg.lastName
-                        it[email] = reg.email
-                        it[createdAt] = Clock.System.now().toJavaInstant()
-                        it[avatarUrl] = reg.avatarUrl
-                        it[isAdmin] = false
+                        it[UsersTable.firstName] = reg.firstName
+                        it[UsersTable.lastName] = reg.lastName
+                        it[UsersTable.email] = reg.email
+                        it[UsersTable.avatarUrl] = reg.avatarUrl
+                        it[UsersTable.isAdmin] = false
+                        it[UsersTable.createdAt] = Clock.System.now().toJavaInstant()
                     }.value
                 log.debug("Inserted into UsersTable, userId={}", userId)
 
                 // 2) credentials
                 UserCredentialsTable.insert {
                     it[UserCredentialsTable.userId] = userId
-                    it[username] = reg.username
-                    it[password] = reg.password
+                    it[UserCredentialsTable.username] = reg.username
+                    it[UserCredentialsTable.password] = reg.password
                 }
                 log.debug("Inserted into UserCredentialsTable for userId={}", userId)
+
+                // get the unit system id
+                val unitSystemId = UnitSystemsTable
+                    .select(UnitSystemsTable.systemName eq reg.unitSystem)
+                    .map { it[UnitSystemsTable.unitSystemId] }
+                    .singleOrNull()
+                    ?: throw IllegalArgumentException("Invalid unit system: ${reg.unitSystem}")
+                // get the energy system id
+                val energySystemId = EnergySystemsTable
+                    .select(EnergySystemsTable.systemName eq reg.energySystem)
+                    .map { it[EnergySystemsTable.energySystemId] }
+                    .singleOrNull()
+                    ?: throw IllegalArgumentException("Invalid energy system: ${reg.energySystem}")
 
                 // 3) parameters
                 UserParametersTable.insert {
                     it[UserParametersTable.userId] = userId
-                    it[weight] = reg.weight
-                    it[height] = reg.height
-                    it[birthDate] = reg.birthDate
-                    it[unitSystemId] = reg.unitSystemId
+                    it[UserParametersTable.weight] = reg.weight
+                    it[UserParametersTable.height] = reg.height
+                    it[UserParametersTable.birthDate] = reg.birthDate
+                    it[UserParametersTable.unitSystemId] = unitSystemId
                 }
                 log.debug("Inserted into UserParametersTable for userId={}", userId)
+
+                // get the health goal id or add it
+                var healthGoalId: Int? = null
+                val healthGoal = reg.healthGoal
+                if (healthGoal != null) {
+                    healthGoalId = PrimaryHealthGoalsTable
+                        .select(PrimaryHealthGoalsTable.goalName eq healthGoal)
+                        .map { it[PrimaryHealthGoalsTable.healthGoalId] }
+                        .singleOrNull()
+                        ?: PrimaryHealthGoalsTable.insert {
+                            it[PrimaryHealthGoalsTable.goalName] = healthGoal
+                        }[PrimaryHealthGoalsTable.healthGoalId]
+                    log.debug("Inserted into PrimaryHealthGoalsTable for userId={}", userId)
+                }
 
                 // 4) preferences
                 UserPreferencesTable.insert {
                     it[UserPreferencesTable.userId] = userId
-                    it[unitSystemId] = reg.unitSystemId
-                    it[energySystemId] = reg.energySystemId
-                    it[healthGoalId] = reg.healthGoalId
-                    it[dailyStepGoal] = reg.dailyStepGoal
-                    it[waterIntakeGoal] = reg.waterIntakeGoal
-                    it[calorieGoal] = reg.calorieGoal
-                    it[sleepGoal] = reg.sleepGoal
-                    it[workoutsCount] = reg.workoutsCount
+                    it[UserPreferencesTable.unitSystemId] = unitSystemId
+                    it[UserPreferencesTable.energySystemId] = energySystemId
+                    it[UserPreferencesTable.healthGoalId] = healthGoalId
+                    it[UserPreferencesTable.dailyStepGoal] = reg.dailyStepGoal
+                    it[UserPreferencesTable.waterIntakeGoal] = reg.waterIntakeGoal
+                    it[UserPreferencesTable.calorieGoal] = reg.calorieGoal
+                    it[UserPreferencesTable.sleepGoal] = reg.sleepGoal
+                    it[UserPreferencesTable.workoutsGoal] = reg.workoutsGoal
                 }
                 log.debug("Inserted into UserPreferencesTable for userId={}", userId)
                 userId
@@ -139,29 +167,33 @@ class UserRepository {
                 .join(UserCredentialsTable, onColumn = UserCredentialsTable.userId, joinType = JoinType.INNER)
                 .join(UserParametersTable, onColumn = UserCredentialsTable.userId, joinType = JoinType.INNER)
                 .join(UserPreferencesTable, onColumn = UserCredentialsTable.userId, joinType = JoinType.INNER)
+                .join(UnitSystemsTable, onColumn = UserParametersTable.unitSystemId, joinType = JoinType.INNER)
+                .join(EnergySystemsTable, onColumn = UserPreferencesTable.energySystemId, joinType = JoinType.INNER)
+                .join(PrimaryHealthGoalsTable, onColumn = UserPreferencesTable.healthGoalId, joinType = JoinType.LEFT)
                 .selectAll()
                 .where(UsersTable.id eq userId).map { row ->
                     UserDTO(
-                        userId            = row[UsersTable.id].value,
-                        firstName         = row[UsersTable.firstName],
-                        lastName          = row[UsersTable.lastName],
-                        email             = row[UsersTable.email],
-                        avatarUrl         = row[UsersTable.avatarUrl],
-                        isAdmin           = row[UsersTable.isAdmin],
-                        createdAt         = row[UsersTable.createdAt].toKotlinInstant(),
-                        username          = row[UserCredentialsTable.username],
-                        password          = row[UserCredentialsTable.password],
-                        weight            = row[UserParametersTable.weight],
-                        height            = row[UserParametersTable.height],
-                        dateOfBirth       = row[UserParametersTable.birthDate],
-                        unitSystemId      = row[UserParametersTable.unitSystemId],
-                        energySystemId    = row[UserPreferencesTable.energySystemId],
-                        primaryHealthGoalId = row[UserPreferencesTable.healthGoalId],
-                        dailyStepGoal     = row[UserPreferencesTable.dailyStepGoal],
-                        waterIntakeGoal   = row[UserPreferencesTable.waterIntakeGoal],
-                        calorieGoal       = row[UserPreferencesTable.calorieGoal],
-                        sleepGoal         = row[UserPreferencesTable.sleepGoal],
-                        workoutsCount     = row[UserPreferencesTable.workoutsCount]
+                        user = User(
+                            userId      = row[UsersTable.id].value,
+                            firstName   = row[UsersTable.firstName],
+                            lastName    = row[UsersTable.lastName],
+                            email       = row[UsersTable.email],
+                            avatarUrl   = row[UsersTable.avatarUrl],
+                            isAdmin     = row[UsersTable.isAdmin],
+                            createdAt   = row[UsersTable.createdAt].toKotlinInstant()
+                        ),
+                        username            = row[UserCredentialsTable.username],
+                        weight              = row[UserParametersTable.weight],
+                        height              = row[UserParametersTable.height],
+                        birthDate           = row[UserParametersTable.birthDate],
+                        unitSystem          = row[UnitSystemsTable.systemName],
+                        energySystem        = row[EnergySystemsTable.systemName],
+                        healthGoal          = row[PrimaryHealthGoalsTable.goalName],
+                        dailyStepGoal       = row[UserPreferencesTable.dailyStepGoal],
+                        waterIntakeGoal     = row[UserPreferencesTable.waterIntakeGoal],
+                        calorieGoal         = row[UserPreferencesTable.calorieGoal],
+                        sleepGoal           = row[UserPreferencesTable.sleepGoal],
+                        workoutsGoal        = row[UserPreferencesTable.workoutsGoal]
                     )
                 }
                 .singleOrNull()

@@ -17,11 +17,18 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import common.exceptions.ArgumentNotFoundException
 import common.kafka.KafkaConfig
+import common.models.EnergySystem
+import common.models.UnitSystem
+import common.models.UserDTO
+import common.models.UserRegistration
+import io.ktor.http.HttpStatusCode
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-
+import java.time.LocalDate
 import java.util.Date
+import java.util.concurrent.TimeUnit
 
 data class JwtConfig(
     val secret: String,
@@ -71,214 +78,313 @@ fun Application.module() {
 
     val responseConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("user-responses"))
     responseConsumer.startConsuming { conversationId, message ->
-        val response = Json.decodeFromString<DataPayload>(message)
-        pendingResponses[conversationId]?.complete(response)
+        log.info("Received response: $message")
+        pendingResponses[conversationId]?.complete(message)
         pendingResponses.remove(conversationId)
     }
 
-    val authConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("auth-requests"))
-    authConsumer.startConsuming { conversationId, message ->
-        log.info("Received auth request: $message")
-        val data = Json.decodeFromString<DataPayload>(message)
+    fun handleUserConsumerCommand(
+        data: DataPayload,
+        conversationId: String,
+        argToCheck: String = "user_id",
+        onSuccess: (DataPayload) -> DataPayload,
+        errorStatusCode: HttpStatusCode,
+        errorDescription: String = "Error processing request"
+    ) {
         val command = data.message
-        val username = data.params.getOrNull(0)
-        val password = data.params.getOrNull(1)
+        log.info("Received command: $command, data: $data")
+        val checkable = data.getParam<String>(argToCheck)
+        if (checkable == null) {
+            val msg = DataPayload.error(
+                status = HttpStatusCode.BadRequest,
+                description = "Invalid credentials"
+            )
+            producerService.send("user-gateway-responses", conversationId, msg)
+            return
+        }
 
+        val requestPayload = DataPayload(command, data.params)
+        val future = CompletableFuture<DataPayload>()
+        pendingResponses[conversationId] = future
+
+        log.info("sending request to user-requests: $requestPayload")
+        producerService.send("user-requests", conversationId, requestPayload)
+
+        future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
+            if (error != null || response.params.isEmpty() || response.message == "error") {
+                log.warn("Received from user-interface: $response")
+                var msg: DataPayload?
+                if (response.message == "error") {
+                    msg = response
+                } else {
+                    msg = DataPayload.error(
+                        status = errorStatusCode,
+                        description = errorDescription
+                    )
+                }
+                producerService.send("user-gateway-responses", conversationId, msg)
+                return@whenComplete
+            }
+            log.info("Received from user-interface: $response")
+            val msg = onSuccess(response)
+            log.info("sending request to user-gateway-responses: $msg")
+            producerService.send("user-gateway-responses", conversationId, msg)
+        }
+    }
+
+    val authConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("auth-requests"))
+    authConsumer.startConsuming { conversationId, data ->
+        log.info("Received auth request: $data")
+        val command = data.message
         when (command) {
+            /**
+             * Needs username in [0], password in [1]
+             * Returns userId in [0], token in [1]
+             */
             "login" -> {
+                val username = data.getParam<String>("username")
+                val password = data.getParam<String>("password")
                 log.info("login, username: $username, password: $password")
                 if (username == null || password == null) {
-                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
-                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                    val msg = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Invalid credentials"
+                    )
+                    producerService.send("auth-responses", conversationId, msg)
                     return@startConsuming
                 }
-                val requestPayload = DataPayload("login", listOf(username, password))
+
+                val requestPayload = DataPayload.build("login") {
+                    param("username", username)
+                    param("password", password)
+                }
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
                 log.info("sending request to user-requests: $requestPayload")
-                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+                producerService.send("user-requests", conversationId, requestPayload)
 
-                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
+                future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
                     if (error != null || response.params.isEmpty() || response.message == "error") {
                         log.warn("Received from user-interface: $response")
-                        val msg = DataPayload("error", listOf("Invalid credentials"))
-                        producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                        var msg: DataPayload?
+                        if (response.message == "error") {
+                            msg = response
+                        } else {
+                            msg = DataPayload.error(
+                                status = HttpStatusCode.Unauthorized,
+                                description = "Invalid credentials"
+                            )
+                        }
+                        producerService.send("auth-responses", conversationId, msg)
                         return@whenComplete
                     }
                     log.info("Received from user-interface: $response")
-                    val userId = response.params[0]
-                    val token = generateToken(User(userId, username, ""), jwtConfig)
-                    val msg = DataPayload(userId, listOf(token))
+                    val userId = response.getParam<String>("user_id")!!
+                    val token = generateToken(User(userId, username, password), jwtConfig)
+                    val msg = DataPayload.build(userId) {
+                        param("user_id", userId)
+                        param("token", token)
+                    }
                     log.info("sending request to auth-responses: $msg")
-                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                    producerService.send("auth-responses", conversationId, msg)
                 }
             }
 
+            /**
+             * Needs `UserRegistration` properties in [0..n]
+             * Returns userId in [0] and token in [1]
+             */
             "register" -> {
-                log.info("register, username: $username, password: $password")
-                if (username == null || password == null) {
-                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
-                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                var userRegistration: UserRegistration?
+                try {
+                    userRegistration = UserRegistration(
+                        username = data.getParam<String>("username") ?:
+                            throw ArgumentNotFoundException("username"),
+                        password = data.getParam<String>("password") ?:
+                            throw ArgumentNotFoundException("password"),
+                        firstName = data.getParam<String>("first_name") ?:
+                            throw ArgumentNotFoundException("first_name"),
+                        lastName = data.getParam<String>("last_name") ?:
+                            throw ArgumentNotFoundException("last_name"),
+                        email = data.getParam<String>("email") ?:
+                            throw ArgumentNotFoundException("email"),
+                        avatarUrl = data.getParam<String>("avatar_url"),
+                        weight = data.getParam<Float>("weight") ?:
+                            throw ArgumentNotFoundException("weight"),
+                        height = data.getParam<Short>("height") ?:
+                            throw ArgumentNotFoundException("height"),
+                        birthDate = data.getParam<LocalDate>("birth_date") ?:
+                            throw ArgumentNotFoundException("birth_date"),
+                        unitSystem = data.getParam<String>("unit_system")?.let { raw ->
+                            try {
+                                UnitSystem.valueOf(raw.uppercase())
+                            } catch (e: IllegalArgumentException) {
+                                throw IllegalArgumentException("Invalid unit system: $raw")
+                            }
+                        } ?: throw ArgumentNotFoundException("unit_system"),
+                        energySystem = data.getParam<String>("energy_system")?.let { raw ->
+                            try {
+                                EnergySystem.valueOf(raw.uppercase())
+                            } catch (e: IllegalArgumentException) {
+                                throw IllegalArgumentException("Invalid energy system: $raw")
+                            }
+                        } ?: throw ArgumentNotFoundException("energy_system"),
+
+                        healthGoal = data.getParam<String>("health_goal"),
+                        dailyStepGoal = data.getParam<Int>("daily_step_goal"),
+                        waterIntakeGoal = data.getParam<Int>("water_intake_goal"),
+                        calorieGoal = data.getParam<Short>("calorie_goal"),
+                        sleepGoal = data.getParam<Float>("sleep_goal"),
+                        workoutsGoal = data.getParam<Short>("workouts_goal"),
+                    )
+                } catch (e: IllegalArgumentException) {
+                    val msg = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = e.message ?: "Invalid registration data"
+                    )
+                    producerService.send("auth-responses", conversationId, msg)
                     return@startConsuming
                 }
-                val requestPayload = DataPayload("createUser", listOf(username, password))
+                val requestPayload = DataPayload.build("register") {
+                    param("user_registration", userRegistration)
+                }
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
                 log.info("sending request to user-requests: $requestPayload")
-                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
+                producerService.send("user-requests", conversationId, requestPayload)
 
-                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
-                    if (error != null) {
+                future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null
+                        || response.message == "error"
+                        || response.getParam<String>("user_id") == null
+                        || response.getParam<String>("token") == null
+                        ) {
                         log.warn("Received from user-interface: $response")
-                        val msg = DataPayload("user-service", listOf("Error creating user"))
-                        producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                        var msg: DataPayload?
+                        if (response.message == "error") {
+                            msg = response
+                        } else {
+                            msg = DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Error registering user"
+                            )
+                        }
+                        producerService.send("auth-responses", conversationId, msg)
                         return@whenComplete
                     }
                     log.info("Received from user-interface: $response")
-                    val userId = response.params.getOrNull(0) ?: "unknown"
-                    val msg = DataPayload(userId, listOf("Success register"))
+                    val userId = response.getParam<String>("user_id")!!
+                    val token = generateToken(User(userId, userRegistration.username, userRegistration.password), jwtConfig)
+                    val msg = DataPayload.build(userId) {
+                        param("user_id", userId)
+                        param("token", token)
+                    }
                     log.info("sending request to auth-responses: $msg")
-                    producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                    producerService.send("auth-responses", conversationId, msg)
                 }
+
             }
 
             else -> {
-                val msg = DataPayload("user-service", listOf("Unknown command"))
+                val msg = DataPayload.error(
+                    status = HttpStatusCode.BadRequest,
+                    description = "Unknown command"
+                )
                 log.warn("Unknown command: $command" ,"\n", "sending to auth-responses: $msg")
-                producerService.send("auth-responses", conversationId, Json.encodeToString(msg))
+                producerService.send("auth-responses", conversationId, msg)
             }
         }
     }
 
     val userConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("user-gateway-requests"))
-    userConsumer.startConsuming { conversationId, message ->
-        log.info("Received user request: $message")
-        val data = Json.decodeFromString<DataPayload>(message)
+    userConsumer.startConsuming { conversationId, data ->
+        log.info("Received user request: $data")
         val command = data.message
-        val args = data.params
         when (command) {
+
+            /** Needs userId in [0], returns userDTO in [0] */
             "userInfo" -> {
-                log.info("userInfo, args: $args")
-                val userId = args.getOrNull(0)
-                if (userId == null) {
-                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
-                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                }
-                val requestPayload = DataPayload("getUserDTO", listOf(userId.toString()))
-                val future = CompletableFuture<DataPayload>()
-                pendingResponses[conversationId] = future
-
-
-                log.info("sending request to user-requests: $requestPayload")
-                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
-
-                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
-                    if (error != null) {
-                        val msg = DataPayload("user-service", listOf("Error getting user"))
-                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                        return@whenComplete
-                    }
-                    val userDTO = response.params.getOrNull(0)
-                    val msg = DataPayload("user-service", listOf(userDTO.toString()))
-                    log.info("sending request to user-gateway-responses: $msg")
-                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                }
-
+                handleUserConsumerCommand(
+                    data,
+                    conversationId,
+                    onSuccess = { response ->
+                        val userDTO = response.getParam<UserDTO>("user_dto")
+                            ?: throw IllegalArgumentException("user_dto not found in response")
+                        DataPayload.build("success") {
+                            param("user_dto", userDTO)
+                        }
+                    },
+                    errorStatusCode = HttpStatusCode.InternalServerError,
+                    errorDescription = "Error retrieving user"
+                )
             }
 
+            /** Needs username in [0], returns userId in [0] */
             "findByUsername" -> {
-                log.info("findByUsername, args: $args")
-                val username = args.getOrNull(0)
-                if (username == null) {
-                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
-                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                }
-                val requestPayload = DataPayload("findByUsername", listOf(username.toString()))
-                val future = CompletableFuture<DataPayload>()
-                pendingResponses[conversationId] = future
-
-                log.info("sending request to user-requests: $requestPayload")
-                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
-
-                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
-                    if (error != null) {
-                        val msg = DataPayload("user-service", listOf("Error getting user"))
-                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                        return@whenComplete
-                    }
-                    val userId = response.params.getOrNull(0)
-                    val msg = DataPayload("user-service", listOf(userId.toString()))
-                    log.info("sending request to user-gateway-responses: $msg")
-                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                }
+                handleUserConsumerCommand(
+                    data,
+                    conversationId,
+                    argToCheck = "username",
+                    onSuccess = { response ->
+                        val userId = response.getParam<String>("user_id")
+                        DataPayload.build("success") {
+                            param("user_id", userId)
+                        }
+                    },
+                    errorStatusCode = HttpStatusCode.InternalServerError,
+                    errorDescription = "Error retrieving user"
+                )
             }
 
+            /** Needs userId in [0] and vararg as data in [1..n], returns userId in [0] */
             "updateUserInfo" -> {
-                log.info("updateUserInfo, args: $args")
-                val userId = args.getOrNull(0)
-                if (userId == null) {
-                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
-                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                }
-                val requestPayload = DataPayload("updateUserDTO", listOf(userId.toString()))
-                val future = CompletableFuture<DataPayload>()
-                pendingResponses[conversationId] = future
-
-                log.info("sending request to user-requests: $requestPayload")
-                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
-
-                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
-                    if (error != null) {
-                        val msg = DataPayload("user-service", listOf("Error getting user"))
-                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                        return@whenComplete
-                    }
-                    val userDTO = response.params.getOrNull(0)
-                    val msg = DataPayload("user-service", listOf(userDTO.toString()))
-                    log.info("sending request to user-gateway-responses: $msg")
-                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                }
+                handleUserConsumerCommand(
+                    data,
+                    conversationId,
+                    onSuccess = { response ->
+                        val userId = response.getParam<String>("user_id")
+                        DataPayload.build("success") {
+                            param("user_id", userId)
+                        }
+                    },
+                    errorStatusCode = HttpStatusCode.InternalServerError,
+                    errorDescription = "Error updating user"
+                )
             }
 
+            /** Needs userId in [0], returns success in [0] */
             "deleteUser" -> {
-                log.info("deleteUser, args: $args")
-                val userId = args.getOrNull(0)
-                if (userId == null) {
-                    val msg = DataPayload("user-service", listOf("Invalid credentials"))
-                    producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                }
-                val requestPayload = DataPayload("deleteUser", listOf(userId.toString()))
-                val future = CompletableFuture<DataPayload>()
-                pendingResponses[conversationId] = future
-
-                log.info("sending request to user-requests: $requestPayload")
-                producerService.send("user-requests", conversationId, Json.encodeToString(requestPayload))
-
-                future.orTimeout(5, java.util.concurrent.TimeUnit.SECONDS).whenComplete { response, error ->
-                    if (error != null) {
-                        val msg = DataPayload("user-service", listOf("Error getting user"))
-                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                        return@whenComplete
-                    }
-                    val success = response.message
-                    if (success == "success") {
-                        val msg = DataPayload("user-service", listOf("Successfully deleted"))
-                        log.info("sending request to user-gateway-responses: $msg")
-                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                    } else {
-                        val msg = DataPayload("user-service", listOf("Error deleting user"))
-                        log.info("sending request to user-gateway-responses: $msg")
-                        producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
-                    }
-                }
+                handleUserConsumerCommand(
+                    data,
+                    conversationId,
+                    onSuccess = { response ->
+                        val success = response.message
+                        val msg = if (success == "success") {
+                            DataPayload.build("success") {
+                                param("success", true)
+                            }
+                        } else {
+                            DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Message from user-interface did not contain success: $success"
+                            )
+                        }
+                        msg
+                    },
+                    errorStatusCode = HttpStatusCode.InternalServerError,
+                    errorDescription = "Error deleting user"
+                )
             }
 
             else -> {
-                val msg = DataPayload("user-service", listOf("Unknown command"))
+                val msg = DataPayload.error(
+                    status = HttpStatusCode.BadRequest,
+                    description = "Unknown command"
+                )
                 log.warn("Unknown command: $command" ,"\n", "sending to user-gateway-responses: $msg")
-                producerService.send("user-gateway-responses", conversationId, Json.encodeToString(msg))
+                producerService.send("user-gateway-responses", conversationId, msg)
             }
         }
     }
