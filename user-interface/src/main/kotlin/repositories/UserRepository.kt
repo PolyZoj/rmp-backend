@@ -152,45 +152,81 @@ class UserRepository {
     @OptIn(ExperimentalTime::class)
     fun getUserDTO(userId: Int): UserDTO? {
         log.info("Fetching UserDTO for userId={}", userId)
-        val userDTO: UserDTO? = DatabaseFactory.read {
-            log.debug("Joining tables to fetch UserDTO for userId={}", userId)
-            UsersTable
-                .join(UserCredentialsTable, onColumn = UserCredentialsTable.userId, joinType = JoinType.INNER)
-                .join(UserParametersTable, onColumn = UserCredentialsTable.userId, joinType = JoinType.INNER)
-                .join(UserPreferencesTable, onColumn = UserCredentialsTable.userId, joinType = JoinType.INNER)
-                .join(UnitSystemsTable, onColumn = UserParametersTable.unitSystemId, joinType = JoinType.INNER)
-                .join(EnergySystemsTable, onColumn = UserPreferencesTable.energySystemId, joinType = JoinType.INNER)
-                .join(PrimaryHealthGoalsTable, onColumn = UserPreferencesTable.healthGoalId, joinType = JoinType.LEFT)
-                .selectAll()
-                .where(UsersTable.id eq userId).map { row ->
-                    UserDTO(
-                        user = User(
-                            userId      = row[UsersTable.id].value,
-                            firstName   = row[UsersTable.firstName],
-                            lastName    = row[UsersTable.lastName],
-                            email       = row[UsersTable.email],
-                            avatarUrl   = row[UsersTable.avatarUrl],
-                            isAdmin     = row[UsersTable.isAdmin],
-                            createdAt   = row[UsersTable.createdAt].toKotlinInstant()
-                        ),
-                        username            = row[UserCredentialsTable.username],
-                        weight              = row[UserParametersTable.weight],
-                        height              = row[UserParametersTable.height],
-                        birthDate           = row[UserParametersTable.birthDate],
-                        unitSystem          = row[UnitSystemsTable.systemName],
-                        energySystem        = row[EnergySystemsTable.systemName],
-                        healthGoal          = row[PrimaryHealthGoalsTable.goalName],
-                        dailyStepGoal       = row[UserPreferencesTable.dailyStepGoal],
-                        waterIntakeGoal     = row[UserPreferencesTable.waterIntakeGoal],
-                        calorieGoal         = row[UserPreferencesTable.calorieGoal],
-                        sleepGoal           = row[UserPreferencesTable.sleepGoal],
-                        workoutsGoal        = row[UserPreferencesTable.workoutsGoal]
+
+        val userDTO: UserDTO? = try {
+            DatabaseFactory.read {
+                log.info("Joining tables to fetch UserDTO for userId={}", userId)
+                try {
+                    UsersTable
+                        .innerJoin(UserCredentialsTable)
+                        .innerJoin(UserParametersTable)
+                        .innerJoin(UserPreferencesTable)
+                        .join(UnitSystemsTable,
+                            onColumn = UserParametersTable.unitSystemId,
+                            otherColumn = UnitSystemsTable.unitSystemId,
+                            joinType = JoinType.INNER
+                        )
+                        .innerJoin(EnergySystemsTable)
+                        .leftJoin(PrimaryHealthGoalsTable) // leftJoin so missing healthGoal → null
+                        .selectAll()
+                        .where { UsersTable.id eq userId }
+                        .map { row ->
+                            try {
+                                UserDTO(
+                                    user = User(
+                                        userId    = row[UsersTable.id].value,
+                                        firstName = row[UsersTable.firstName],
+                                        lastName  = row[UsersTable.lastName],
+                                        email     = row[UsersTable.email],
+                                        avatarUrl = row[UsersTable.avatarUrl],
+                                        isAdmin   = row[UsersTable.isAdmin],
+                                        createdAt = row[UsersTable.createdAt].toKotlinInstant()
+                                    ),
+                                    username        = row[UserCredentialsTable.username],
+                                    weight          = row[UserParametersTable.weight],
+                                    height          = row[UserParametersTable.height],
+                                    birthDate       = row[UserParametersTable.birthDate],
+                                    unitSystem      = row[UnitSystemsTable.systemName],
+                                    energySystem    = row[EnergySystemsTable.systemName],
+                                    healthGoal      = row[PrimaryHealthGoalsTable.goalName],       // nullable
+                                    dailyStepGoal   = row[UserPreferencesTable.dailyStepGoal],
+                                    waterIntakeGoal = row[UserPreferencesTable.waterIntakeGoal],
+                                    calorieGoal     = row[UserPreferencesTable.calorieGoal],
+                                    sleepGoal       = row[UserPreferencesTable.sleepGoal],
+                                    workoutsGoal    = row[UserPreferencesTable.workoutsGoal]
+                                )
+                            } catch (dtoEx: Exception) {
+                                log.error(
+                                    "Failed to map ResultRow → UserDTO for userId={}",
+                                    userId,
+                                    dtoEx
+                                )
+                                throw dtoEx
+                            }
+                        }
+                        .singleOrNull()
+                } catch (sqlOrMapEx: Exception) {
+                    log.error(
+                        "Error fetching or building UserDTO for userId={}",
+                        userId,
+                        sqlOrMapEx
                     )
+                    null
                 }
-                .singleOrNull()
-        }.also {
-            if (it != null) log.info("UserDTO fetched successfully for userId={}", userId)
-            else            log.info("No UserDTO found for userId={}", userId)
+            }
+        } catch (txEx: Exception) {
+            log.error(
+                "Transaction error when reading UserDTO for userId={}",
+                userId,
+                txEx
+            )
+            null
+        }
+
+        if (userDTO != null) {
+            log.info("UserDTO fetched successfully for userId={}", userId)
+        } else {
+            log.info("No UserDTO found or error occurred for userId={}", userId)
         }
         return userDTO
     }

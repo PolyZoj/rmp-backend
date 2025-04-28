@@ -66,7 +66,7 @@ fun Application.configureRouting() {
 
             // GET /users/{id} - получение информации о конкретном пользователе
             get("/{id}") {
-                val id = call.parameters["id"]?.toIntOrNull()
+                val id = call.parameters["id"]
                 log.info("GET /api/v1/users/{}", id)
                 if (id == null) {
                     call.respond(HttpStatusCode.BadRequest, "Некорректный id пользователя")
@@ -74,7 +74,7 @@ fun Application.configureRouting() {
                 }
 
                 val requestPayload = DataPayload.build("userInfo") {
-                    param("id", id)
+                    param("user_id", id)
                 }
                 log.info("sending request to user-gateway-requests: {}", requestPayload)
                 reqProcessor.processRequest(
