@@ -85,20 +85,8 @@ class UserRepository {
                 }
                 log.debug("Inserted into UserCredentialsTable for userId={}", userId)
 
-                // get the unit system id
-                val unitSystemId = UnitSystemsTable
-                    .select(UnitSystemsTable.unitSystemId)
-                    .where { UnitSystemsTable.systemName eq reg.unitSystem }
-                    .map { it[UnitSystemsTable.unitSystemId] }
-                    .singleOrNull()
-                    ?: throw IllegalArgumentException("Invalid unit system: ${reg.unitSystem}")
-                // get the energy system id
-                val energySystemId = EnergySystemsTable
-                    .select(EnergySystemsTable.energySystemId)
-                    .where { EnergySystemsTable.systemName eq reg.energySystem }
-                    .map { it[EnergySystemsTable.energySystemId] }
-                    .singleOrNull()
-                    ?: throw IllegalArgumentException("Invalid energy system: ${reg.energySystem}")
+                val unitSystemId   = StaticLookups.idFor(reg.unitSystem)
+                val energySystemId = StaticLookups.idFor(reg.energySystem)
 
                 // 3) parameters
                 UserParametersTable.insert {
