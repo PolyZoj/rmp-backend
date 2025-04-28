@@ -88,6 +88,30 @@ fun Application.configureRouting() {
                 )
             }
 
+            // GET /users/username/{username} - получение id пользователя по username
+            get("/username/{username}") {
+                val username = call.parameters["username"]
+                log.info("GET /api/v1/users/username/{}", username)
+                if (username == null) {
+                    call.respond(HttpStatusCode.BadRequest, "Некорректный username пользователя")
+                    return@get
+                }
+
+                val requestPayload = DataPayload.build("findByUsername") {
+                    param("username", username)
+                }
+                log.info("sending request to user-gateway-requests: {}", requestPayload)
+                reqProcessor.processRequest(
+                    requestPayload,
+                    "user-gateway-requests",
+                    call,
+                    kafkaProducer,
+                    pendingResponses,
+                    mutex,
+                    ::handleSuccessfulResponse
+                )
+            }
+
             // PUT /users/{id} - обновление информации о пользователе
             put("/{id}") {
                 log.info("PUT /api/v1/users/{id}")
@@ -192,6 +216,11 @@ private suspend fun handleSuccessfulResponse(
 ) {
     when (operation) {
         "userInfo" -> call.respond(
+            HttpStatusCode.OK,
+            Json.encodeToString(DataPayload.serializer(), result)
+            )
+
+        "findByUsername" -> call.respond(
             HttpStatusCode.OK,
             Json.encodeToString(DataPayload.serializer(), result)
             )

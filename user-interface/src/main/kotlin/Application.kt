@@ -95,7 +95,7 @@ fun Application.module() {
                     val userId = userRepository.findByUsername(username)
                     val resp = if (userId != null) {
                         DataPayload.build(userId.toString()) {
-                            param("user_id", userId)
+                            param("user_id", userId.toString())
                         }
                     } else {
                         DataPayload.error(
