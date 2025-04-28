@@ -259,7 +259,6 @@ fun Application.module() {
                     if (error != null
                         || response.message == "error"
                         || response.getParam<String>("user_id") == null
-                        || response.getParam<String>("token") == null
                         ) {
                         log.warn("Received from user-interface: $response")
                         var msg: DataPayload?

@@ -2,7 +2,6 @@ package common
 
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
@@ -81,21 +80,19 @@ class Builder(val message: String) {
 
 
 class DataPayloadSerializer : Serializer<DataPayload> {
-    private val json = Json { encodeDefaults = true }
     override fun serialize(topic: String?, data: DataPayload?): ByteArray? =
-        data?.let { json.encodeToString(it).toByteArray(Charsets.UTF_8) }
+        data?.let { JsonConfig.instance.encodeToString(it).toByteArray(Charsets.UTF_8) }
 }
 
 class DataPayloadDeserializer : Deserializer<DataPayload> {
-    private val json = Json { ignoreUnknownKeys = true }
     override fun deserialize(topic: String?, data: ByteArray?): DataPayload? =
         data?.let {
-            json.decodeFromString<DataPayload>(it.toString(Charsets.UTF_8))
+            JsonConfig.instance.decodeFromString<DataPayload>(it.toString(Charsets.UTF_8))
         }
 }
 
 inline fun <reified T> T.toJsonElement(): JsonElement =
-    Json.encodeToJsonElement(this)
+    JsonConfig.instance.encodeToJsonElement(this)
 
 inline fun <reified T> JsonElement.asType(): T =
-    Json.decodeFromJsonElement(this)
+    JsonConfig.instance.decodeFromJsonElement(this)

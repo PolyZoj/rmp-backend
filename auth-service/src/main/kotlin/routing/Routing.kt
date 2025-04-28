@@ -9,7 +9,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import ru.polyZoj.models.LoginRequest
-import ru.polyZoj.models.RegisterRequest
 import ru.polyZoj.models.TokenResponse
 import common.DataPayload
 import common.kafka.RequestProcessor
@@ -23,10 +22,23 @@ import org.apache.kafka.common.errors.TopicExistsException
 import java.util.concurrent.ExecutionException
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.sync.RedisCommands
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.float
+import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
 val redisCommands: RedisCommands<String, String> = RedisClient.create("redis://redis:6379").connect().sync()
 
+inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
+
 fun Application.configureRouting() {
+    val log = logger<Application>()
     val producer = createKafkaProducer()
     val consumer = createKafkaConsumer("auth-consumer")
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
@@ -59,11 +71,29 @@ fun Application.configureRouting() {
     routing {
         route("/api/v1/auth") {
             post("/register") {
-                val request = call.receive<RegisterRequest>()
-                // TODO: Нужны все данные для регистрации, не только user pass
+                val text = call.receiveText()
+                val json = Json
+                    .parseToJsonElement(text)
+                    .jsonObject
+
                 val payload = DataPayload.build("register") {
-                    param("username", request.username)
-                    param("password", request.password)
+                    param("username", json["username"]?.jsonPrimitive?.content)
+                    param("password", json["password"]?.jsonPrimitive?.content)
+                    param("first_name", json["first_name"]?.jsonPrimitive?.content)
+                    param("last_name", json["last_name"]?.jsonPrimitive?.content)
+                    param("email", json["email"]?.jsonPrimitive?.content)
+                    param("avatar_url", json["avatar_url"]?.jsonPrimitive?.contentOrNull)
+                    param("weight", json["weight"]?.jsonPrimitive?.float)
+                    param("height", json["height"]?.jsonPrimitive?.int)
+                    param("birth_date", json["birth_date"]?.jsonPrimitive?.content)
+                    param("unit_system", json["unit_system"]?.jsonPrimitive?.content)
+                    param("energy_system", json["energy_system"]?.jsonPrimitive?.content)
+                    param("health_goal", json["health_goal"]?.jsonPrimitive?.contentOrNull)
+                    param("daily_step_goal", json["daily_step_goal"]?.jsonPrimitive?.intOrNull)
+                    param("water_intake_goal", json["water_intake_goal"]?.jsonPrimitive?.intOrNull)
+                    param("calorie_goal", json["calorie_goal"]?.jsonPrimitive?.intOrNull)
+                    param("sleep_goal", json["sleep_goal"]?.jsonPrimitive?.floatOrNull)
+                    param("workouts_goal", json["workouts_goal"]?.jsonPrimitive?.intOrNull)
                 }
                 reqProcessor.processRequest(payload, "auth-requests", call, producer, responses, mutex, ::handleSuccessfulResponse)
             }

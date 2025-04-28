@@ -5,8 +5,10 @@ import common.kafka.KafkaConfig
 import common.kafka.RequestProcessor
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import common.models.UserUpdatable
 import io.ktor.http.*
 import io.ktor.server.application.*
+import io.ktor.server.request.receive
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.CompletableDeferred
@@ -86,12 +88,11 @@ fun Application.configureRouting() {
                 )
             }
 
-
-
             // PUT /users/{id} - обновление информации о пользователе
             put("/{id}") {
                 log.info("PUT /api/v1/users/{id}")
                 val id = call.parameters["id"]?.toLongOrNull()
+                val request = call.receive<UserUpdatable>()
                 if (id == null) {
                     log.debug("PUT /api/v1/users/{id}, id is null")
                     call.respond(HttpStatusCode.BadRequest, "Некорректный id пользователя")

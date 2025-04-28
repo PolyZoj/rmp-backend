@@ -87,13 +87,15 @@ class UserRepository {
 
                 // get the unit system id
                 val unitSystemId = UnitSystemsTable
-                    .select(UnitSystemsTable.systemName eq reg.unitSystem)
+                    .select(UnitSystemsTable.unitSystemId)
+                    .where { UnitSystemsTable.systemName eq reg.unitSystem }
                     .map { it[UnitSystemsTable.unitSystemId] }
                     .singleOrNull()
                     ?: throw IllegalArgumentException("Invalid unit system: ${reg.unitSystem}")
                 // get the energy system id
                 val energySystemId = EnergySystemsTable
-                    .select(EnergySystemsTable.systemName eq reg.energySystem)
+                    .select(EnergySystemsTable.energySystemId)
+                    .where { EnergySystemsTable.systemName eq reg.energySystem }
                     .map { it[EnergySystemsTable.energySystemId] }
                     .singleOrNull()
                     ?: throw IllegalArgumentException("Invalid energy system: ${reg.energySystem}")
@@ -113,7 +115,8 @@ class UserRepository {
                 val healthGoal = reg.healthGoal
                 if (healthGoal != null) {
                     healthGoalId = PrimaryHealthGoalsTable
-                        .select(PrimaryHealthGoalsTable.goalName eq healthGoal)
+                        .select(PrimaryHealthGoalsTable.healthGoalId)
+                        .where(PrimaryHealthGoalsTable.goalName eq healthGoal)
                         .map { it[PrimaryHealthGoalsTable.healthGoalId] }
                         .singleOrNull()
                         ?: PrimaryHealthGoalsTable.insert {

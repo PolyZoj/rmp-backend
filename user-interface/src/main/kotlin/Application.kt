@@ -122,7 +122,7 @@ fun Application.module() {
                 try {
                     val newId = userRepository.createUser(reg)
                     val resp = DataPayload.build(newId.toString()) {
-                        param("user_id", newId)
+                        param("user_id", newId.toString())
                     }
                     log.info("User created successfully, sending response: $resp")
                     producerService.send("user-responses", conversationId, resp)
