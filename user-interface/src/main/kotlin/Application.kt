@@ -13,10 +13,13 @@ import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import common.models.FriendshipStatus
+import common.models.UserBasicInfo
 import io.ktor.http.HttpStatusCode
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import common.models.UserRegistration
+import common.models.UserUpdatable
 import ru.polyZoj.repositories.UserRepository
 
 
@@ -48,6 +51,67 @@ fun Application.module() {
     val consumerService = KafkaConsumerService(kafkaConsumer, listOf("user-requests"))
 
     val userRepository = UserRepository()
+
+    fun handleFriendshipPostRequest(
+        request: String,
+        data: DataPayload,
+        status: FriendshipStatus?,
+        conversationId: String,
+        action: (Int, Int, FriendshipStatus?) -> Boolean
+    ) {
+        log.info("Request received: $request")
+        val userId = data.getParam<String>("user_id")
+        val friendId = data.getParam<String>("friend_id")
+        if (userId == null || friendId == null) {
+            val err = DataPayload.error(
+                status = HttpStatusCode.BadRequest,
+                description = "Missing user ID or friend ID"
+            )
+            producerService.send("user-responses", conversationId, err)
+        } else {
+            val success = action(
+                userId.toInt(),
+                friendId.toInt(),
+                status
+            )
+            if (success) {
+                val resp = DataPayload.build("success") {
+                    param("success", true)
+                }
+                producerService.send("user-responses", conversationId, resp)
+            } else {
+                val err = DataPayload.error(
+                    status = HttpStatusCode.NotFound,
+                    description = "User or friend not found"
+                )
+                producerService.send("user-responses", conversationId, err)
+            }
+        }
+    }
+
+    fun getFriendRequestsHelper(userId: Int): List<UserBasicInfo> {
+        log.info("Get friend requests for user ID: $userId")
+        val idList = userRepository.getFriendshipRequests(userId)
+        log.info("Friendship requests IDs: $idList")
+        if (idList.isEmpty()) {
+            return emptyList()
+        }
+        val userList = mutableListOf<UserBasicInfo>()
+        for (id in idList) {
+            val username = userRepository.findUsernameById(id)
+            if (username != null) {
+                userList.add(UserBasicInfo(id, username))
+            }
+        }
+        return userList
+    }
+
+    fun findFriendHelper(userId: Int, searchString: String): List<UserBasicInfo> {
+        val friendsIds = userRepository.getFriends(userId)
+        val friendsMatchedSubstring = userRepository.findUserIdsByUsernameSubstring(friendsIds, searchString)
+        val friendsInfo = userRepository.getUsersBasicInfo(friendsMatchedSubstring)
+        return friendsInfo
+    }
 
     consumerService.startConsuming { conversationId, data ->
         log.info("Received message: $data")
@@ -127,6 +191,7 @@ fun Application.module() {
                     log.info("User created successfully, sending response: $resp")
                     producerService.send("user-responses", conversationId, resp)
                     return@startConsuming
+
                 } catch (e: IllegalArgumentException) {
                     val err = DataPayload.error(
                         status = HttpStatusCode.BadRequest,
@@ -136,16 +201,15 @@ fun Application.module() {
                     producerService.send("user-responses", conversationId, err)
 
                 } catch (e: DuplicateFieldException) {
-                    val errorMsg = when (e.fieldName) {
-                        "email" -> "That email is already registered."
-                        "username" -> "That username is taken."
-                        else -> "Duplicate field: ${e.fieldName}"
-                    }
                     val err = DataPayload.error(
                         status = HttpStatusCode.Conflict,
-                        description = errorMsg
+                        description = when (e.fieldName) {
+                            "email" -> "That email is already registered."
+                            "username" -> "That username is taken."
+                            else -> "Duplicate field: ${e.fieldName}"
+                        }
                     )
-                    log.error("Error creating user: $errorMsg", e)
+                    log.error("Error creating user: $e")
                     producerService.send("user-responses", conversationId, err)
                 } catch (e: Exception) {
                     val err = DataPayload.error(
@@ -183,20 +247,20 @@ fun Application.module() {
                 }
             }
 
-            "updateUserDTO" -> {
-                log.info("Update user DTO command received, data: $data")
+            "updateUserInfo" -> {
+                log.info("Update user info command received, data: $data")
                 val userId = data.getParam<String>("user_id")
-                if (userId == null) {
+                val userUpdatable = data.getParam<UserUpdatable>("user_data")
+                if (userId == null || userUpdatable == null) {
                     val err = DataPayload.error(
                         status = HttpStatusCode.BadRequest,
-                        description = "Missing user ID"
+                        description = "Missing user ID or user data"
                     )
                     producerService.send("user-responses", conversationId, err)
                 } else {
-                    val userDTO = userRepository.getUserDTO(userId.toInt())
-                    if (userDTO != null) {
-                        // TODO: Update logic in repository
-                        val resp = DataPayload.build(userId) {
+                    val success = userRepository.updateUser(userId.toInt(), userUpdatable)
+                    if (success) {
+                        val resp = DataPayload.build("success") {
                             param("success", true)
                         }
                         producerService.send("user-responses", conversationId, resp)
@@ -223,7 +287,7 @@ fun Application.module() {
                     val deleted = userRepository.deleteUser(userId.toInt())
                     if (deleted) {
                         val resp = DataPayload.build("success") {
-                            param("message", "User deleted successfully")
+                            param("success", true)
                         }
                         producerService.send("user-responses", conversationId, resp)
                     } else {
@@ -233,6 +297,119 @@ fun Application.module() {
                         )
                         producerService.send("user-responses", conversationId, err)
                     }
+                }
+            }
+
+            "getFriendRequests" -> {
+                log.info("Get friend requests, data: $data")
+                val userId = data.getParam<String>("user_id")
+                if (userId == null) {
+                    val err = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Missing user ID"
+                    )
+                    producerService.send("user-responses", conversationId, err)
+                } else {
+                    val requests = getFriendRequestsHelper(userId.toInt())
+                    log.info("Result of action: $requests")
+                    val resp = if (requests.isEmpty()) {
+                        DataPayload.build(userId) {
+                            param("friend_requests", emptyList<String>())
+                        }
+                    } else {
+                        DataPayload.build(userId) {
+                            param("friend_requests", requests)
+                        }
+                    }
+                    producerService.send("user-responses", conversationId, resp)
+                }
+            }
+
+            "acceptFriendRequest" -> {
+                log.info("Accept friend request, data: $data")
+                handleFriendshipPostRequest(
+                    request = "acceptFriendRequest",
+                    data = data,
+                    status = FriendshipStatus.ACCEPTED,
+                    conversationId = conversationId,
+                    action = userRepository::setFriendshipRequestStatus
+                )
+            }
+
+            "denyFriendRequest" -> {
+                log.info("Deny friend request, data: $data")
+                handleFriendshipPostRequest(
+                    request = "denyFriendRequest",
+                    data = data,
+                    status = FriendshipStatus.REJECTED,
+                    conversationId = conversationId,
+                    action = userRepository::setFriendshipRequestStatus
+                )
+            }
+
+            "addFriendRequest" -> {
+                log.info("Add friend request, data: $data")
+                handleFriendshipPostRequest(
+                    request = "addFriendRequest",
+                    data = data,
+                    status = FriendshipStatus.PENDING,
+                    conversationId = conversationId,
+                    action = userRepository::setFriendshipRequestStatus
+                )
+            }
+
+            "removeFriend" -> {
+                log.info("Remove friend, data: $data")
+                handleFriendshipPostRequest(
+                    request = "removeFriend",
+                    data = data,
+                    status = null,
+                    conversationId = conversationId,
+                    action = userRepository::removeFriendship
+                )
+            }
+
+            "getFriendsList" -> {
+                log.info("Get friends list, data: $data")
+                val userId = data.getParam<String>("user_id")
+                if (userId == null) {
+                    val err = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Missing user ID"
+                    )
+                    producerService.send("user-responses", conversationId, err)
+                } else {
+                    val requests = userRepository.getFriends(userId.toInt())
+                    log.info("Result of action: $requests")
+                    val resp = if (requests.isEmpty()) {
+                        DataPayload.build(userId) {
+                            param("friends", emptyList<String>())
+                        }
+                    } else {
+                        DataPayload.build(userId) {
+                            param("friends", requests)
+                        }
+                    }
+                    producerService.send("user-responses", conversationId, resp)
+                }
+            }
+
+            "findFriend" -> {
+                log.info("Find friend, data: $data")
+                val userId = data.getParam<String>("user_id")
+                val searchString = data.getParam<String>("find-username")
+                if (userId == null || searchString == null) {
+                    val err = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Missing user ID or search string"
+                    )
+                    producerService.send("user-responses", conversationId, err)
+                } else {
+                    val friendsInfo = findFriendHelper(userId.toInt(), searchString)
+                    val resp = DataPayload.build(userId) {
+                        param("possible-friend", friendsInfo)
+                    }
+                    producerService.send("user-responses", conversationId, resp)
                 }
             }
 

@@ -147,6 +147,13 @@ data class UserUpdatable @OptIn(ExperimentalTime::class) constructor(
     @SerialName("workouts_goal") val workoutsGoal: Short? = null,
 )
 
+@Serializable
+data class UserBasicInfo(
+    @SerialName("user_id") val userId: Int,
+    @SerialName("username") val username: String,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+)
+
 /**
  * Смена пароля
  */
@@ -163,5 +170,4 @@ data class Friendship @OptIn(ExperimentalTime::class) constructor(
     @SerialName("user_id") val userId: Int,
     @SerialName("friend_id") val friendId: Int,
     @SerialName("friendship_status") val friendshipStatus: FriendshipStatus,
-    @SerialName("created_at") @Serializable(with = InstantSerializer::class) val createdAt: Instant
 )

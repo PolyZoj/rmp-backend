@@ -7,6 +7,7 @@ import org.jetbrains.exposed.dao.id.IntIdTable
 import common.models.EnergySystem
 import common.models.FriendshipStatus
 import common.models.UnitSystem
+import org.jetbrains.exposed.sql.ReferenceOption
 
 /** “users” **/
 object UsersTable : IntIdTable("users", "user_id") {
@@ -22,7 +23,11 @@ object UsersTable : IntIdTable("users", "user_id") {
 
 /** "user_credentials" **/
 object UserCredentialsTable : Table("user_credentials") {
-    val userId   = integer("user_id").references(UsersTable.id)
+    val userId   = reference(
+        "user_id",
+        UsersTable.id,
+        onDelete = ReferenceOption.CASCADE
+    )
     val username = varchar("username", 255).uniqueIndex()
     val password = varchar("password", 255)
 
@@ -63,21 +68,45 @@ object FriendshipStatusesTable : Table("friendship_statuses") {
 
 /** “user_parameters” **/
 object UserParametersTable : Table("user_parameters") {
-    val userId       = integer("user_id").references(UsersTable.id)
+    val userId       = reference(
+        "user_id",
+        UsersTable.id,
+        onDelete = ReferenceOption.CASCADE
+    )
     val weight       = float("weight")
     val height       = short("height")
     val birthDate    = date("birth_date")
-    val unitSystemId = integer("unit_system_id").references(UnitSystemsTable.unitSystemId)
+    val unitSystemId = reference(
+        "unit_system_id",
+        UnitSystemsTable.unitSystemId,
+        onDelete = ReferenceOption.RESTRICT
+    )
 
     override val primaryKey = PrimaryKey(userId, name = "pk_user_parameters")
 }
 
 /** “user_preferences” **/
 object UserPreferencesTable : Table("user_preferences") {
-    val userId         = integer("user_id").references(UsersTable.id)
-    val unitSystemId   = integer("unit_system_id").references(UnitSystemsTable.unitSystemId)
-    val energySystemId = integer("energy_system_id").references(EnergySystemsTable.energySystemId)
-    val healthGoalId   = integer("health_goal_id").references(PrimaryHealthGoalsTable.healthGoalId).nullable()
+    val userId         = reference(
+        "user_id",
+        UsersTable.id,
+        onDelete = ReferenceOption.CASCADE
+    )
+    val unitSystemId   = reference(
+        "unit_system_id",
+        UnitSystemsTable.unitSystemId,
+        onDelete = ReferenceOption.RESTRICT
+    )
+    val energySystemId = reference(
+        "energy_system_id",
+        EnergySystemsTable.energySystemId,
+        onDelete = ReferenceOption.RESTRICT
+    )
+    val healthGoalId   = reference(
+        "health_goal_id",
+        PrimaryHealthGoalsTable.healthGoalId,
+        onDelete = ReferenceOption.SET_NULL
+    ).nullable()
     val dailyStepGoal     = integer("daily_step_goal").nullable()
     val waterIntakeGoal    = integer("water_intake_goal").nullable()
     val calorieGoal   = short("calorie_goal").nullable()
@@ -89,9 +118,21 @@ object UserPreferencesTable : Table("user_preferences") {
 
 /** "friendships" **/
 object FriendshipsTable : Table("friendships") {
-    val userId = integer("user_id").references(UsersTable.id)
-    val friendId = integer("friend_id").references(UsersTable.id)
-    val friendshipStatus   = integer("friendship_status_id").references(FriendshipStatusesTable.friendshipStatusId)
+    val userId = reference(
+        "user_id",
+        UsersTable.id,
+        onDelete = ReferenceOption.CASCADE
+    )
+    val friendId = reference(
+        "friend_id",
+        UsersTable.id,
+        onDelete = ReferenceOption.CASCADE
+    )
+    val friendshipStatus = reference(
+        "friendship_status_id",
+        FriendshipStatusesTable.friendshipStatusId,
+        onDelete = ReferenceOption.RESTRICT
+    )
 
     override val primaryKey = PrimaryKey(userId, friendId, name = "pk_friendships")
 }

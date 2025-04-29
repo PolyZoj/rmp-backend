@@ -2,7 +2,6 @@ package ru.polyZoj.repositories
 
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.JoinType
-import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -12,11 +11,16 @@ import org.jetbrains.exposed.sql.selectAll
 import org.postgresql.util.PSQLException
 import ru.polyZoj.db.*
 import common.exceptions.DuplicateFieldException
+import common.models.FriendshipStatus
 import ru.polyZoj.logger
 import common.models.User
-import common.models.UserCredentials
+import common.models.UserBasicInfo
 import common.models.UserDTO
 import common.models.UserRegistration
+import common.models.UserUpdatable
+import org.jetbrains.exposed.sql.lowerCase
+import org.jetbrains.exposed.sql.or
+import org.jetbrains.exposed.sql.update
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaInstant
@@ -39,6 +43,22 @@ class UserRepository {
         } else {
             log.info("No user found for username='{}'", username)
         }
+        return result?.value
+    }
+
+    fun findUsernameById(userId: Int): String? {
+        log.info("Entering findUsernameById with userId={}", userId)
+        val result = DatabaseFactory.read {
+            UserCredentialsTable.select(UserCredentialsTable.username)
+                .where { UserCredentialsTable.userId eq userId }
+                .map { it[UserCredentialsTable.username] }
+                .singleOrNull()
+        }
+        if (result != null) {
+            log.info("Username found for userId={}, username='{}'", userId, result)
+        } else {
+            log.info("No username found for userId={}", userId)
+        }
         return result
     }
 
@@ -56,7 +76,7 @@ class UserRepository {
         } else {
             log.info("Login failed for username='{}'", username)
         }
-        return userId
+        return userId?.value
     }
 
     /** Create a brand‐new user (all tables) and return their new user_id */
@@ -149,6 +169,7 @@ class UserRepository {
         }
     }
 
+    /** Get userDTO by userId */
     @OptIn(ExperimentalTime::class)
     fun getUserDTO(userId: Int): UserDTO? {
         log.info("Fetching UserDTO for userId={}", userId)
@@ -231,25 +252,266 @@ class UserRepository {
         return userDTO
     }
 
+    /** Delete user and all related data. Returns true if any rows were deleted. */
     fun deleteUser(userId: Int): Boolean {
-        log.info("Deleting user and related data for userId={}", userId)
-        val deleted = DatabaseFactory.write {
-            val usersDeleted = UsersTable.deleteWhere { UsersTable.id eq userId }
-            val credentialsDeleted = UserCredentialsTable.deleteWhere { UserCredentialsTable.userId eq userId }
-            val parametersDeleted = UserParametersTable.deleteWhere { UserParametersTable.userId eq userId }
-            val preferencesDeleted = UserPreferencesTable.deleteWhere { UserPreferencesTable.userId eq userId }
-            usersDeleted > 0 || credentialsDeleted > 0 || parametersDeleted > 0 || preferencesDeleted > 0
+        log.info("Deleting user (and cascading related rows) for userId={}", userId)
+
+        return try {
+            val deletedCount = DatabaseFactory.write {
+                UsersTable.deleteWhere { UsersTable.id eq userId }
+            }
+
+            if (deletedCount > 0) {
+                log.info("User deletion (with cascade) succeeded for userId={}", userId)
+                true
+            } else {
+                log.warn("No user found to delete for userId={}", userId)
+                false
+            }
+        } catch (e: Exception) {
+            log.error("Failed to delete user data for userId={}", userId, e)
+            false
         }
-        if (deleted) log.info("User deletion succeeded for userId={}", userId) else log.warn("No records deleted for userId={}", userId)
-        return deleted
     }
 
-    private fun toUserCredentials(row: ResultRow): UserCredentials {
-        log.debug("Mapping ResultRow to UserCredentials for row={} ", row)
-        return UserCredentials(
-            userId   = row[UserCredentialsTable.userId],
-            username = row[UserCredentialsTable.username],
-            password = row[UserCredentialsTable.password]
-        )
+    /** Update user data. Returns true if any rows were updated. */
+    fun updateUser(userId: Int, userUpdatable: UserUpdatable): Boolean {
+        log.info("Updating user data for userId={}", userId)
+        return try {
+            DatabaseFactory.write {
+                userUpdatable.avatarUrl?.let { a ->
+                    UsersTable.update({ UsersTable.id eq userId }) {
+                        it[avatarUrl] = a
+                    }
+                }
+                userUpdatable.height?.let { h ->
+                    UserParametersTable.update({ UserParametersTable.userId eq userId }) {
+                        it[height] = h
+                    }
+                }
+                userUpdatable.weight?.let { w ->
+                    UserParametersTable.update({ UserParametersTable.userId eq userId }) {
+                        it[weight] = w
+                    }
+                }
+                userUpdatable.healthGoal?.let { h ->
+                    val healthId = PrimaryHealthGoalsTable
+                        .select(PrimaryHealthGoalsTable.goalName eq h)
+                        .map { it[PrimaryHealthGoalsTable.healthGoalId] }
+                        .singleOrNull()
+                        ?: PrimaryHealthGoalsTable.insert {
+                            it[goalName] = h
+                        }[PrimaryHealthGoalsTable.healthGoalId]
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
+                        it[healthGoalId] = healthId
+                    }
+                }
+                userUpdatable.dailyStepGoal?.let { d ->
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
+                        it[dailyStepGoal] = d
+                    }
+                }
+                userUpdatable.waterIntakeGoal?.let { w ->
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
+                        it[waterIntakeGoal] = w
+                    }
+                }
+                userUpdatable.calorieGoal?.let { c ->
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
+                        it[calorieGoal] = c
+                    }
+                }
+                userUpdatable.sleepGoal?.let { s ->
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
+                        it[sleepGoal] = s
+                    }
+                }
+                userUpdatable.workoutsGoal?.let { w ->
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
+                        it[workoutsGoal] = w
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            log.error("Error updating user data for userId={}", userId, e)
+            false
+        }
     }
+
+    /** Get all friendships for a user with a given status */
+    fun getFriendshipsWhereStatus(userId: Int, status: FriendshipStatus): List<Int> {
+        return DatabaseFactory.read {
+            val statusPendingId = StaticLookups.idFor(status)
+
+            FriendshipsTable
+                .selectAll()
+                .where {
+                    ((FriendshipsTable.userId eq userId) or
+                            (FriendshipsTable.friendId eq userId)) and
+                            (FriendshipsTable.friendshipStatus eq statusPendingId)
+                }
+                .map { row ->
+                    // whichever side isn’t the given userId
+                    val uid = row[FriendshipsTable.userId].value
+                    val fid = row[FriendshipsTable.friendId].value
+                    if (uid == userId) fid else uid
+                }
+                .distinct()
+        }
+    }
+
+    /** Finds all friendship requests for a user (status pending)*/
+    fun getFriendshipRequests(userId: Int): List<Int> {
+        log.info("Fetching friendship requests for userId={}", userId)
+        return getFriendshipsWhereStatus(userId, FriendshipStatus.PENDING)
+            .also { log.info("Found {} friendship requests for userId={}", it.size, userId) }
+    }
+
+    /** Set friendship request status. Returns success boolean */
+    fun setFriendshipRequestStatus(uId: Int, fId: Int, status: FriendshipStatus?): Boolean {
+        log.info("Setting friendship request status={} from userId={} to friendId={}", status, uId, fId)
+
+        return try {
+            DatabaseFactory.write {
+                val statusId = StaticLookups.idFor(status!!)
+
+                val friendshipExists = FriendshipsTable
+                    .selectAll()
+                    .where{
+                        (FriendshipsTable.userId eq uId) and
+                        (FriendshipsTable.friendId eq fId) or
+                        (FriendshipsTable.userId eq fId) and
+                        (FriendshipsTable.friendId eq uId)
+                    }
+                    .count() > 0
+
+                if (!friendshipExists) {
+                    FriendshipsTable.insert {
+                        it[userId] = uId
+                        it[friendId] = fId
+                        it[friendshipStatus] = statusId
+                    }
+                } else {
+                    log.info("Friendship already exists, updating status")
+                    FriendshipsTable.update({
+                        (FriendshipsTable.userId eq uId) and
+                                (FriendshipsTable.friendId eq fId) or
+                                (FriendshipsTable.userId eq fId) and
+                                (FriendshipsTable.friendId eq uId)
+                    }) {
+                        it[friendshipStatus] = statusId
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            log.error("Error setting friendship request status={} from userId={} to friendId={}", status, uId, fId, e)
+            false
+        }
+    }
+
+    /** Removes friendship row.
+     * status not used, but necessary for the function signature
+     * */
+    fun removeFriendship(userId: Int, friendId: Int, status: FriendshipStatus? = null): Boolean {
+        log.info("Removing friendship from userId={} to friendId={}", userId, friendId)
+        return try {
+            DatabaseFactory.write {
+                FriendshipsTable.deleteWhere {
+                    (FriendshipsTable.userId eq userId) and
+                    (FriendshipsTable.friendId eq friendId) or
+                    (FriendshipsTable.userId eq friendId) and
+                    (FriendshipsTable.friendId eq userId)
+                }
+            }
+            true
+        } catch (e: Exception) {
+            log.error("Error removing friendship from userId={} to friendId={}", userId, friendId, e)
+            false
+        }
+    }
+
+    /** Get all friends for a user (status accepted) */
+    fun getFriends(userId: Int): List<Int> {
+        log.info("Fetching friends for userId={}", userId)
+        return getFriendshipsWhereStatus(userId, FriendshipStatus.ACCEPTED)
+            .also { log.info("Found {} friends for userId={}", it.size, userId) }
+    }
+
+    /**
+     * Find user IDs by username substring.
+     * Returns a list of user IDs that match the given substring.
+     * The search is case-insensitive.
+     */
+    fun findUserIdsByUsernameSubstring(list: List<Int>, substring: String): List<Int> {
+        log.info("Searching for user IDs where username ILIKE '%{}%'", substring)
+        return try {
+            DatabaseFactory.read {
+                UserCredentialsTable
+                    .select(UserCredentialsTable.userId)
+                    .where {
+                        (UserCredentialsTable.userId inList list) and
+                        // LOWER(username) LIKE '%lower(substring)%'
+                        (UserCredentialsTable.username.lowerCase() like "%${substring.lowercase()}%")
+                    }
+                    .map { row ->
+                        row[UserCredentialsTable.userId].value
+                    }
+            }
+        } catch (ex: Exception) {
+            log.error("Error querying user IDs by username substring='{}'", substring, ex)
+            emptyList()
+        }.also { result ->
+            log.info("Found {} matching user IDs for substring='{}'", result.size, substring)
+        }
+    }
+
+    /** Get basic info for a list of users (userId, username, avatarUrl) */
+    fun getUsersBasicInfo(userIds: List<Int>): List<UserBasicInfo> {
+        log.info("Fetching basic info for userIds={}", userIds)
+
+        return try {
+            DatabaseFactory.read {
+                try {
+                    UsersTable
+                        .innerJoin(UserCredentialsTable)
+                        .select(
+                            UsersTable.id,
+                            UserCredentialsTable.username,
+                            UsersTable.avatarUrl
+                        )
+                        .where { UsersTable.id inList userIds }
+                        .map { row ->
+                            UserBasicInfo(
+                                userId    = row[UsersTable.id].value,
+                                username  = row[UserCredentialsTable.username],
+                                avatarUrl = row[UsersTable.avatarUrl]
+                            )
+                        }
+                } catch (sqlEx: Exception) {
+                    log.error(
+                        "Error querying basic info for userIds={}",
+                        userIds,
+                        sqlEx
+                    )
+                    emptyList()
+                }
+            }
+        } catch (txEx: Exception) {
+            log.error(
+                "Transaction error when reading basic info for userIds={}",
+                userIds,
+                txEx
+            )
+            emptyList()
+        }.also { list ->
+            log.info(
+                "Fetched {} basic user records for userIds={}",
+                list.size,
+                userIds
+            )
+        }
+    }
+
 }

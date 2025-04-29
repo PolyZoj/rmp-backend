@@ -21,8 +21,10 @@ import common.exceptions.ArgumentNotFoundException
 import common.kafka.KafkaConfig
 import common.models.EnergySystem
 import common.models.UnitSystem
+import common.models.UserBasicInfo
 import common.models.UserDTO
 import common.models.UserRegistration
+import common.models.UserUpdatable
 import io.ktor.http.HttpStatusCode
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -113,11 +115,10 @@ fun Application.module() {
         future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
             if (error != null || response.params.isEmpty() || response.message == "error") {
                 log.warn("Received from user-interface: $response")
-                var msg: DataPayload?
-                if (response.message == "error") {
-                    msg = response
+                val msg = if (response.message == "error") {
+                    response
                 } else {
-                    msg = DataPayload.error(
+                    DataPayload.error(
                         status = errorStatusCode,
                         description = errorDescription
                     )
@@ -130,6 +131,41 @@ fun Application.module() {
             log.info("sending request to user-gateway-responses: $msg")
             producerService.send("user-gateway-responses", conversationId, msg)
         }
+    }
+
+    fun friendshipStatusHelper(
+        data: DataPayload,
+        conversationId: String,
+    ) {
+        val friendId = data.getParam<String>("friend_id")
+        if (friendId == null) {
+            val msg = DataPayload.error(
+                status = HttpStatusCode.BadRequest,
+                description = "Not found friend_id in request"
+            )
+            producerService.send("user-gateway-responses", conversationId, msg)
+            return
+        }
+        handleUserConsumerCommand(
+            data,
+            conversationId,
+            onSuccess = { response ->
+                val success = response.message
+                val msg = if (success == "success") {
+                    DataPayload.build("success") {
+                        param("success", true)
+                    }
+                } else {
+                    DataPayload.error(
+                        status = HttpStatusCode.InternalServerError,
+                        description = "Message from user-interface did not contain success: $success"
+                    )
+                }
+                msg
+            },
+            errorStatusCode = HttpStatusCode.InternalServerError,
+            errorDescription = "Error accepting friend request"
+        )
     }
 
     val authConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("auth-requests"))
@@ -303,7 +339,7 @@ fun Application.module() {
         val command = data.message
         when (command) {
 
-            /** Needs userId in [0], returns userDTO in [0] */
+            /** Needs userId, returns userDTO */
             "userInfo" -> {
                 handleUserConsumerCommand(
                     data,
@@ -320,7 +356,7 @@ fun Application.module() {
                 )
             }
 
-            /** Needs username in [0], returns userId in [0] */
+            /** Needs username, returns userId */
             "findByUsername" -> {
                 handleUserConsumerCommand(
                     data,
@@ -337,23 +373,56 @@ fun Application.module() {
                 )
             }
 
-            /** Needs userId in [0] and vararg as data in [1..n], returns userId in [0] */
+            /** Needs userId and UserUpdatable, returns success */
             "updateUserInfo" -> {
+                var userUpdatable: UserUpdatable?
+                try {
+                    userUpdatable = UserUpdatable(
+                        avatarUrl = data.getParam<String?>("avatar_url"),
+                        weight = data.getParam<Float?>("weight"),
+                        height = data.getParam<Short?>("height"),
+                        healthGoal = data.getParam<String?>("health_goal"),
+                        dailyStepGoal = data.getParam<Int?>("daily_step_goal"),
+                        waterIntakeGoal = data.getParam<Int?>("water_intake_goal"),
+                        calorieGoal = data.getParam<Short?>("calorie_goal"),
+                        sleepGoal = data.getParam<Float?>("sleep_goal"),
+                        workoutsGoal = data.getParam<Short?>("workouts_goal")
+                    )
+                } catch (e: IllegalArgumentException) {
+                    val msg = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = e.message ?: "Invalid update data"
+                    )
+                    producerService.send("user-gateway-responses", conversationId, msg)
+                    return@startConsuming
+                }
+                val dataPayload = DataPayload.build("updateUserInfo") {
+                    param("user_id", data.getParam<String>("user_id"))
+                    param("user_data", userUpdatable)
+                }
                 handleUserConsumerCommand(
-                    data,
+                    dataPayload,
                     conversationId,
                     onSuccess = { response ->
-                        val userId = response.getParam<String>("user_id")
-                        DataPayload.build("success") {
-                            param("user_id", userId)
+                        val success = response.message
+                        val msg = if (success == "success") {
+                            DataPayload.build("success") {
+                                param("success", true)
+                            }
+                        } else {
+                            DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Message from user-interface did not contain success: $success"
+                            )
                         }
+                        msg
                     },
                     errorStatusCode = HttpStatusCode.InternalServerError,
-                    errorDescription = "Error updating user"
+                    errorDescription = "Error deleting user"
                 )
             }
 
-            /** Needs userId in [0], returns success in [0] */
+            /** Needs userId, returns success */
             "deleteUser" -> {
                 handleUserConsumerCommand(
                     data,
@@ -377,6 +446,100 @@ fun Application.module() {
                 )
             }
 
+            /** Needs userId, returns List<Pair<Int, String>> */
+            "getFriendRequests" -> {
+                handleUserConsumerCommand(
+                    data,
+                    conversationId,
+                    onSuccess = { response ->
+                        val friendRequests = response.getParam<List<Pair<Int, String>>>("friend_requests")
+                            ?: throw IllegalArgumentException("friend_requests not found in response")
+                        DataPayload.build("success") {
+                            param("friend_requests", friendRequests)
+                        }
+                    },
+                    errorStatusCode = HttpStatusCode.InternalServerError,
+                    errorDescription = "Error retrieving friend requests"
+                )
+            }
+
+            /** Needs userId, friendId, returns success */
+            "acceptFriendRequest" -> {
+                friendshipStatusHelper(
+                    data,
+                    conversationId
+                )
+            }
+
+            /** Needs userId, friendId, returns success */
+            "denyFriendRequest" -> {
+                friendshipStatusHelper(
+                    data,
+                    conversationId
+                )
+            }
+
+            /** Needs userId, friendId, returns success */
+            "addFriendRequest" -> {
+                friendshipStatusHelper(
+                    data,
+                    conversationId
+                )
+            }
+
+            /** Needs userId, friendId, returns success */
+            "removeFriend" -> {
+                friendshipStatusHelper(
+                    data,
+                    conversationId
+                )
+            }
+
+            /** Needs userId, returns List<Int> */
+            "getFriendsList" -> {
+                handleUserConsumerCommand(
+                    data,
+                    conversationId,
+                    onSuccess = { response ->
+                        val friendsList = response.getParam<List<Int>>("friends")
+                            ?: throw IllegalArgumentException("friends not found in response")
+                        DataPayload.build("success") {
+                            param("friends", friendsList)
+                        }
+                    },
+                    errorStatusCode = HttpStatusCode.InternalServerError,
+                    errorDescription = "Error retrieving friends list"
+                )
+            }
+
+            /** Needs userId, find-username String, returns possible-friend List<UserBasicInfo> */
+            "findFriend" -> {
+                val findUsername = data.getParam<String>("find-username")
+                if (findUsername == null) {
+                    val msg = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Not found find-username in request"
+                    )
+                    producerService.send("user-gateway-responses", conversationId, msg)
+                    return@startConsuming
+                }
+                handleUserConsumerCommand(
+                    data,
+                    conversationId,
+                    onSuccess = { response ->
+                        val possibleFriends = response.getParam<List<UserBasicInfo>>("possible_friends")
+                            ?: throw IllegalArgumentException("possible_friends not found in response")
+                        DataPayload.build("success") {
+                            param("possible_friends", possibleFriends)
+                        }
+                    },
+                    errorStatusCode = HttpStatusCode.InternalServerError,
+                    errorDescription = "Error retrieving possible friends"
+                )
+            }
+
+
+
             else -> {
                 val msg = DataPayload.error(
                     status = HttpStatusCode.BadRequest,
@@ -395,6 +558,7 @@ fun generateToken(user: User, config: JwtConfig): String {
         .withIssuer(config.domain)
         .withAudience(config.audience)
         .withClaim("username", user.username)
+        .withClaim("userId", user.id)
         .withExpiresAt(Date(System.currentTimeMillis() + config.expiresIn))
         .sign(Algorithm.HMAC256(config.secret))
 }

@@ -17,7 +17,8 @@ class KafkaProducerService(val producer: KafkaProducer<String, DataPayload>) {
                         "Topic: ${metadata.topic()}, " +
                         "Partition: ${metadata.partition()}, " +
                         "Offset: ${metadata.offset()}, " +
-                        "ConversationID: $conversationId"
+                        "ConversationID: $conversationId, " +
+                        "Message: $message"
                 )
             }
         }

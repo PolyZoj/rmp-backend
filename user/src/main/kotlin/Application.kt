@@ -6,6 +6,7 @@ import io.ktor.server.application.*
 import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
+import ru.polyZoj.configs.configureSecurity
 import ru.polyZoj.routing.configureRouting
 
 
@@ -21,5 +22,7 @@ fun Application.module() {
             ignoreUnknownKeys = true
         })
     }
+
+    configureSecurity()
     configureRouting()
 }
