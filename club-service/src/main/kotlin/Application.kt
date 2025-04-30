@@ -7,11 +7,12 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.config.ApplicationConfig
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
-import ru.polyZog.kafka.KafkaConsumerService
-import ru.polyZog.kafka.KafkaProducerService
-import ru.polyZog.kafka.createKafkaConsumer
-import ru.polyZog.kafka.createKafkaProducer
-import ru.polyZog.models.DataPayload
+import common.DataPayload
+import common.kafka.KafkaConfig
+import common.kafka.KafkaConsumerService
+import common.kafka.KafkaProducerService
+import common.kafka.createKafkaConsumer
+import common.kafka.createKafkaProducer
 import ru.polyZog.models.Club
 import ru.polyZog.repositories.ClubDataSource
 import com.auth0.jwt.JWT
@@ -48,11 +49,15 @@ fun Application.module() {
             ignoreUnknownKeys = true
         })
     }
+    
+    val kafkaConfig = KafkaConfig()
+    kafkaConfig.createTopicIfNotExists("club-requests", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("club-responses", 1, 3.toShort())
 
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
 
-    val kafkaConsumer = createKafkaConsumer()
+    val kafkaConsumer = createKafkaConsumer("club-service-consumer")
     val consumerTopics = listOf("club-requests")
     val consumerService = KafkaConsumerService(kafkaConsumer, consumerTopics)
 
@@ -81,16 +86,13 @@ private fun handleCreateClub(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    println("sending response")
     val name = payload.params.getOrNull(0) ?: ""
     val description = payload.params.getOrNull(1) ?: ""
     val ownerId = payload.params.getOrNull(2) ?: ""
-    println("sending response")
     if (name.isBlank() || ownerId.isBlank()) {
         sendError(conversationId, "Missing required params", producer)
         return
     }
-    println("sending response")
     val club = ClubDataSource.createClub(name, description, ownerId)
     val response = DataPayload(
         message = "created",
