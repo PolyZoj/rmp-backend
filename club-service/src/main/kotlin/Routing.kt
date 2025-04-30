@@ -1,4 +1,4 @@
-package ru.polyZog
+package ru.polyZoj
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*

@@ -1,0 +1,21 @@
+ktor:
+    application:
+        modules:
+            - ru.polyZoj.ApplicationKt.module
+    deployment:
+        port: 8080
+        watch:
+            - classes
+            - resources
+
+
+  
+logging:
+  level:
+    root: INFO
+    ru.polyZoj: DEBUG
+    org.jetbrains.exposed: INFO
+    Exposed: DEBUG
+    org.flywaydb: INFO
+    io.ktor: INFO
+    com.zaxxer.hikari: INFO

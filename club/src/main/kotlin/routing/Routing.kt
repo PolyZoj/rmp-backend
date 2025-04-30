@@ -36,8 +36,8 @@ fun Application.configureRouting() {
     val json = Json { ignoreUnknownKeys = true }
 
     val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists("club-requests", 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists("club-responses", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("club-gateway-requests", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("club-gateway-responses", 1, 3.toShort())
 
 
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
@@ -48,7 +48,7 @@ fun Application.configureRouting() {
 
     val consumer = createKafkaConsumer("club-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("club-responses"))
+        consumer.subscribe(listOf("club-gateway-responses"))
         while (true) {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
@@ -138,7 +138,7 @@ private suspend fun processClubRequest(
         responses[correlationId] = responseDeferred
     }
     producer.send(
-        "club-requests",
+        "club-gateway-requests",
         correlationId,
         json.encodeToString(payload)
     )

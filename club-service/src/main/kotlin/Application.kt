@@ -1,4 +1,4 @@
-package ru.polyZog
+package ru.polyZoj
 
 import io.ktor.server.application.*
 import io.ktor.server.engine.embeddedServer
@@ -13,8 +13,8 @@ import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
-import ru.polyZog.models.Club
-import ru.polyZog.repositories.ClubDataSource
+import ru.polyZoj.models.Club
+import ru.polyZoj.repositories.ClubDataSource
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 
@@ -58,8 +58,7 @@ fun Application.module() {
     val producerService = KafkaProducerService(kafkaProducer)
 
     val kafkaConsumer = createKafkaConsumer("club-service-consumer")
-    val consumerTopics = listOf("club-requests")
-    val consumerService = KafkaConsumerService(kafkaConsumer, consumerTopics)
+    val consumerService = KafkaConsumerService(kafkaConsumer, listOf("club-gateway-requests"))
 
     consumerService.startConsuming { conversationId, message ->
         println("Consumed message -> ConversationID: $conversationId, Message: $message")
@@ -98,7 +97,7 @@ private fun handleCreateClub(
         message = "created",
         params = listOf(club.id, club.name)
     )
-    producer.send("club-responses", conversationId, Json.encodeToString(response))
+    producer.send("club-gateway-responses", conversationId, Json.encodeToString(response))
 }
 
 private fun handleListClubs(
@@ -115,7 +114,7 @@ private fun handleListClubs(
         message = "clubsList",
         params = clubs.map { Json.encodeToString(clubs) },
     )
-    producer.send("club-responses", conversationId, Json.encodeToString(response))
+    producer.send("club-gateway-responses", conversationId, Json.encodeToString(response))
 }
 
 private fun handleAddMember(
@@ -137,7 +136,7 @@ private fun handleAddMember(
                 message = "memberAdded",
                 params = listOf(userId, clubId)
             )
-            producer.send("club-responses", conversationId, Json.encodeToString(response))
+            producer.send("club-gateway-responses", conversationId, Json.encodeToString(response))
         }
         false -> sendError(conversationId, "Club not found or user already member", producer)
     }
@@ -162,7 +161,7 @@ private fun handleRemoveMember(
                 message = "memberRemoved",
                 params = listOf(userId, clubId)
             )
-            producer.send("club-responses", conversationId, Json.encodeToString(response))
+            producer.send("club-gateway-responses", conversationId, Json.encodeToString(response))
         }
         false -> sendError(conversationId, "Club not found or user not member", producer)
     }
@@ -181,7 +180,7 @@ private fun handleGetInfo(
             message = "clubInfo",
             params = listOf(club.id, club.name, club.description, club.ownerId, Json.encodeToString(club.members))
         )
-        producer.send("club-responses", conversationId, Json.encodeToString(response))
+        producer.send("club-gateway-responses", conversationId, Json.encodeToString(response))
     } else {
         sendError(conversationId, "Club not found", producer)
     }
@@ -192,6 +191,6 @@ private fun sendError(conversationId: String, message: String, producer: KafkaPr
         message = "error",
         params = listOf(message)
     )
-    producer.send("club-responses", conversationId, Json.encodeToString(response))
+    producer.send("club-gateway-responses", conversationId, Json.encodeToString(response))
 }
 
