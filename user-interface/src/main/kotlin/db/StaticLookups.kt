@@ -6,7 +6,7 @@ import common.models.UnitSystem
 import org.jetbrains.exposed.sql.selectAll
 
 object StaticLookups {
-    private val unitSystemByName: Map<UnitSystem, Int> = DatabaseFactory.read {
+    private val unitSystemByName: Map<UnitSystem, Int> = DatabaseFactory.readBlocking {
         UnitSystemsTable
             .selectAll()
             .associate { row ->
@@ -14,7 +14,7 @@ object StaticLookups {
             }
     }
 
-    private val energySystemByName: Map<EnergySystem, Int> = DatabaseFactory.read {
+    private val energySystemByName: Map<EnergySystem, Int> = DatabaseFactory.readBlocking {
         EnergySystemsTable
             .selectAll()
             .associate { row ->
@@ -22,7 +22,7 @@ object StaticLookups {
             }
     }
 
-    private val friendshipStatusByName: Map<FriendshipStatus, Int> = DatabaseFactory.read {
+    private val friendshipStatusByName: Map<FriendshipStatus, Int> = DatabaseFactory.readBlocking {
         FriendshipStatusesTable
             .selectAll()
             .associate { row ->

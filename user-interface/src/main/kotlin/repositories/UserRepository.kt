@@ -30,12 +30,13 @@ class UserRepository {
     private val log = logger<UserRepository>()
 
     /** Look up a user’s id by username */
-    fun findByUsername(username: String): Int? {
-        log.info("Entering findByUsername with username='{}'", username)
-        val result = DatabaseFactory.read {
+    suspend fun findByUsername(username: String): Int? {
+        log.debug("Entering findByUsername with username='{}'", username)
+        val result: Int? = DatabaseFactory.read {
             UserCredentialsTable.select(UserCredentialsTable.userId)
                 .where { UserCredentialsTable.username eq username }
-                .map { it[UserCredentialsTable.userId] }
+                .limit(1)
+                .map { it[UserCredentialsTable.userId].value }
                 .singleOrNull()
         }
         if (result != null) {
@@ -43,14 +44,15 @@ class UserRepository {
         } else {
             log.info("No user found for username='{}'", username)
         }
-        return result?.value
+        return result
     }
 
-    fun findUsernameById(userId: Int): String? {
-        log.info("Entering findUsernameById with userId={}", userId)
+    suspend fun findUsernameById(userId: Int): String? {
+        log.debug("Entering findUsernameById with userId={}", userId)
         val result = DatabaseFactory.read {
             UserCredentialsTable.select(UserCredentialsTable.username)
                 .where { UserCredentialsTable.userId eq userId }
+                .limit(1)
                 .map { it[UserCredentialsTable.username] }
                 .singleOrNull()
         }
@@ -63,12 +65,13 @@ class UserRepository {
     }
 
     /** Return userId if credentials match **/
-    fun login(username: String, password: String): Int? {
-        log.info("Attempting login for username='{}'", username)
-        val userId = DatabaseFactory.read {
+    suspend fun login(username: String, password: String): Int? {
+        log.debug("Attempting login for username='{}'", username)
+        val userId: Int? = DatabaseFactory.read {
             UserCredentialsTable.select(UserCredentialsTable.userId)
                 .where { (UserCredentialsTable.username eq username) and (UserCredentialsTable.password eq password) }
-                .map { it[UserCredentialsTable.userId] }
+                .limit(1)
+                .map { it[UserCredentialsTable.userId].value }
                 .singleOrNull()
         }
         if (userId != null) {
@@ -76,13 +79,13 @@ class UserRepository {
         } else {
             log.info("Login failed for username='{}'", username)
         }
-        return userId?.value
+        return userId
     }
 
     /** Create a brand‐new user (all tables) and return their new user_id */
     @OptIn(ExperimentalTime::class)
-    fun createUser(reg: UserRegistration): Int {
-        log.info("Registering new user: username='{}'", reg.username)
+    suspend fun createUser(reg: UserRegistration): Int {
+        log.debug("Registering new user: username='{}'", reg.username)
         try {
             val newUserId = DatabaseFactory.write {
                 // 1) users
@@ -171,12 +174,12 @@ class UserRepository {
 
     /** Get userDTO by userId */
     @OptIn(ExperimentalTime::class)
-    fun getUserDTO(userId: Int): UserDTO? {
-        log.info("Fetching UserDTO for userId={}", userId)
+    suspend fun getUserDTO(userId: Int): UserDTO? {
+        log.debug("Fetching UserDTO for userId={}", userId)
 
         val userDTO: UserDTO? = try {
             DatabaseFactory.read {
-                log.info("Joining tables to fetch UserDTO for userId={}", userId)
+                log.debug("Joining tables to fetch UserDTO for userId={}", userId)
                 try {
                     UsersTable
                         .innerJoin(UserCredentialsTable)
@@ -191,6 +194,7 @@ class UserRepository {
                         .leftJoin(PrimaryHealthGoalsTable) // leftJoin so missing healthGoal → null
                         .selectAll()
                         .where { UsersTable.id eq userId }
+                        .limit(1)
                         .map { row ->
                             try {
                                 UserDTO(
@@ -253,8 +257,8 @@ class UserRepository {
     }
 
     /** Delete user and all related data. Returns true if any rows were deleted. */
-    fun deleteUser(userId: Int): Boolean {
-        log.info("Deleting user (and cascading related rows) for userId={}", userId)
+    suspend fun deleteUser(userId: Int): Boolean {
+        log.debug("Deleting user (and cascading related rows) for userId={}", userId)
 
         return try {
             val deletedCount = DatabaseFactory.write {
@@ -275,8 +279,8 @@ class UserRepository {
     }
 
     /** Update user data. Returns true if any rows were updated. */
-    fun updateUser(userId: Int, userUpdatable: UserUpdatable): Boolean {
-        log.info("Updating user data for userId={}", userId)
+    suspend fun updateUser(userId: Int, userUpdatable: UserUpdatable): Boolean {
+        log.debug("Updating user data for userId={}", userId)
         return try {
             DatabaseFactory.write {
                 userUpdatable.avatarUrl?.let { a ->
@@ -340,71 +344,106 @@ class UserRepository {
     }
 
     /** Get all friendships for a user with a given status */
-    fun getFriendshipsWhereStatus(userId: Int, status: FriendshipStatus): List<Int> {
+    suspend fun getFriendshipsWhereStatus(userId: Int, status: FriendshipStatus): List<Int> {
         return DatabaseFactory.read {
             val statusPendingId = StaticLookups.idFor(status)
 
-            FriendshipsTable
-                .selectAll()
-                .where {
-                    ((FriendshipsTable.userId eq userId) or
-                            (FriendshipsTable.friendId eq userId)) and
+            when (status) {
+                FriendshipStatus.PENDING -> {
+                    FriendshipsTable
+                        .selectAll()
+                        .where { // we're looking for friendship requests for the given userId
+                            (FriendshipsTable.friendId eq userId) and
                             (FriendshipsTable.friendshipStatus eq statusPendingId)
+                        }
+                        .map { row ->
+                            // whichever side isn’t the given userId
+                            val uid = row[FriendshipsTable.userId].value
+                            val fid = row[FriendshipsTable.friendId].value
+                            if (uid == userId) fid else uid
+                        }
+                        .distinct()
                 }
-                .map { row ->
-                    // whichever side isn’t the given userId
-                    val uid = row[FriendshipsTable.userId].value
-                    val fid = row[FriendshipsTable.friendId].value
-                    if (uid == userId) fid else uid
+                else -> {
+                    FriendshipsTable
+                        .selectAll()
+                        .where {
+                            ((FriendshipsTable.userId eq userId) or
+                                    (FriendshipsTable.friendId eq userId)) and
+                                    (FriendshipsTable.friendshipStatus eq statusPendingId)
+                        }
+                        .map { row ->
+                            val uid = row[FriendshipsTable.userId].value
+                            val fid = row[FriendshipsTable.friendId].value
+                            if (uid == userId) fid else uid
+                        }
+                        .distinct()
                 }
-                .distinct()
+            }
         }
     }
 
     /** Finds all friendship requests for a user (status pending)*/
-    fun getFriendshipRequests(userId: Int): List<Int> {
-        log.info("Fetching friendship requests for userId={}", userId)
+    suspend fun getFriendshipRequests(userId: Int): List<Int> {
+        log.debug("Fetching friendship requests for userId={}", userId)
         return getFriendshipsWhereStatus(userId, FriendshipStatus.PENDING)
             .also { log.info("Found {} friendship requests for userId={}", it.size, userId) }
     }
 
     /** Set friendship request status. Returns success boolean */
-    fun setFriendshipRequestStatus(uId: Int, fId: Int, status: FriendshipStatus?): Boolean {
-        log.info("Setting friendship request status={} from userId={} to friendId={}", status, uId, fId)
+    suspend fun setFriendshipRequestStatus(uId: Int, fId: Int, status: FriendshipStatus?): Boolean {
+        log.debug("Setting friendship request status={} from userId={} to friendId={}", status, uId, fId)
 
         return try {
             DatabaseFactory.write {
                 val statusId = StaticLookups.idFor(status!!)
-
-                val friendshipExists = FriendshipsTable
-                    .selectAll()
-                    .where{
-                        (FriendshipsTable.userId eq uId) and
-                        (FriendshipsTable.friendId eq fId) or
-                        (FriendshipsTable.userId eq fId) and
-                        (FriendshipsTable.friendId eq uId)
+                when (status) {
+                    FriendshipStatus.ACCEPTED, FriendshipStatus.REJECTED -> {
+                        val rows = FriendshipsTable.update({
+                            (FriendshipsTable.userId eq fId) and (FriendshipsTable.friendId eq uId)
+                        }) {
+                            it[friendshipStatus] = statusId
+                        }
+                        if (rows == 0) {
+                            log.warn("No friendship request found to update for userId={} and friendId={}", fId, uId)
+                            return@write false
+                        } else {
+                            log.info("Friendship request updated successfully for userId={} and friendId={}", fId, uId)
+                            return@write true
+                        }
                     }
-                    .count() > 0
+                    else -> {
+                        val friendshipRelationExists = FriendshipsTable
+                            .selectAll()
+                            .where{
+                                ((FriendshipsTable.userId eq uId) and (FriendshipsTable.friendId eq fId)) or
+                                        ((FriendshipsTable.userId eq fId) and (FriendshipsTable.friendId eq uId))
+                            }
+                            .count() > 0
+                        log.debug("Friendship exists: {}", friendshipRelationExists)
 
-                if (!friendshipExists) {
-                    FriendshipsTable.insert {
-                        it[userId] = uId
-                        it[friendId] = fId
-                        it[friendshipStatus] = statusId
-                    }
-                } else {
-                    log.info("Friendship already exists, updating status")
-                    FriendshipsTable.update({
-                        (FriendshipsTable.userId eq uId) and
-                                (FriendshipsTable.friendId eq fId) or
-                                (FriendshipsTable.userId eq fId) and
-                                (FriendshipsTable.friendId eq uId)
-                    }) {
-                        it[friendshipStatus] = statusId
+                        if (!friendshipRelationExists) {
+                            FriendshipsTable.insert {
+                                it[userId] = uId
+                                it[friendId] = fId
+                                it[friendshipStatus] = statusId
+                            }
+                            return@write true
+                        } else {
+                            log.debug("Friendship already exists, updating status")
+                            FriendshipsTable.update({
+                                (FriendshipsTable.userId eq uId) and
+                                        (FriendshipsTable.friendId eq fId) or
+                                        (FriendshipsTable.userId eq fId) and
+                                        (FriendshipsTable.friendId eq uId)
+                            }) {
+                                it[friendshipStatus] = statusId
+                            }
+                            return@write true
+                        }
                     }
                 }
             }
-            true
         } catch (e: Exception) {
             log.error("Error setting friendship request status={} from userId={} to friendId={}", status, uId, fId, e)
             false
@@ -414,8 +453,8 @@ class UserRepository {
     /** Removes friendship row.
      * status not used, but necessary for the function signature
      * */
-    fun removeFriendship(userId: Int, friendId: Int, status: FriendshipStatus? = null): Boolean {
-        log.info("Removing friendship from userId={} to friendId={}", userId, friendId)
+    suspend fun removeFriendship(userId: Int, friendId: Int, status: FriendshipStatus? = null): Boolean {
+        log.debug("Removing friendship from userId={} to friendId={}", userId, friendId)
         return try {
             DatabaseFactory.write {
                 FriendshipsTable.deleteWhere {
@@ -433,8 +472,8 @@ class UserRepository {
     }
 
     /** Get all friends for a user (status accepted) */
-    fun getFriends(userId: Int): List<Int> {
-        log.info("Fetching friends for userId={}", userId)
+    suspend fun getFriends(userId: Int): List<Int> {
+        log.debug("Fetching friends for userId={}", userId)
         return getFriendshipsWhereStatus(userId, FriendshipStatus.ACCEPTED)
             .also { log.info("Found {} friends for userId={}", it.size, userId) }
     }
@@ -444,8 +483,8 @@ class UserRepository {
      * Returns a list of user IDs that match the given substring.
      * The search is case-insensitive.
      */
-    fun findUserIdsByUsernameSubstring(list: List<Int>, substring: String): List<Int> {
-        log.info("Searching for user IDs where username ILIKE '%{}%'", substring)
+    suspend fun findUserIdsByUsernameSubstring(list: List<Int>, substring: String): List<Int> {
+        log.debug("Searching for user IDs where username ILIKE '%{}%'", substring)
         return try {
             DatabaseFactory.read {
                 UserCredentialsTable
@@ -468,8 +507,8 @@ class UserRepository {
     }
 
     /** Get basic info for a list of users (userId, username, avatarUrl) */
-    fun getUsersBasicInfo(userIds: List<Int>): List<UserBasicInfo> {
-        log.info("Fetching basic info for userIds={}", userIds)
+    suspend fun getUsersBasicInfo(userIds: List<Int>): List<UserBasicInfo> {
+        log.debug("Fetching basic info for userIds={}", userIds)
 
         return try {
             DatabaseFactory.read {

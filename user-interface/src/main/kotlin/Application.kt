@@ -52,12 +52,12 @@ fun Application.module() {
 
     val userRepository = UserRepository()
 
-    fun handleFriendshipPostRequest(
+    suspend fun handleFriendshipPostRequest(
         request: String,
         data: DataPayload,
         status: FriendshipStatus?,
         conversationId: String,
-        action: (Int, Int, FriendshipStatus?) -> Boolean
+        action: suspend (Int, Int, FriendshipStatus?) -> Boolean
     ) {
         log.info("Request received: $request")
         val userId = data.getParam<String>("user_id")
@@ -89,7 +89,7 @@ fun Application.module() {
         }
     }
 
-    fun getFriendRequestsHelper(userId: Int): List<UserBasicInfo> {
+    suspend fun getFriendRequestsHelper(userId: Int): List<UserBasicInfo> {
         log.info("Get friend requests for user ID: $userId")
         val idList = userRepository.getFriendshipRequests(userId)
         log.info("Friendship requests IDs: $idList")
@@ -106,7 +106,7 @@ fun Application.module() {
         return userList
     }
 
-    fun findFriendHelper(userId: Int, searchString: String): List<UserBasicInfo> {
+    suspend fun findFriendHelper(userId: Int, searchString: String): List<UserBasicInfo> {
         val friendsIds = userRepository.getFriends(userId)
         val friendsMatchedSubstring = userRepository.findUserIdsByUsernameSubstring(friendsIds, searchString)
         val friendsInfo = userRepository.getUsersBasicInfo(friendsMatchedSubstring)
