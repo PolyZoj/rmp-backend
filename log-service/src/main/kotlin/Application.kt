@@ -1,11 +1,66 @@
 package ru.polyZoj
 
+import common.DataPayload
+import common.kafka.KafkaConfig
+import common.kafka.KafkaConsumerService
+import common.kafka.createKafkaConsumer
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
+import io.ktor.server.engine.*
+import io.ktor.server.netty.*
+import io.ktor.server.plugins.contentnegotiation.*
+import kotlinx.serialization.json.Json
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import ru.polyZoj.db.DBFactory
+import ru.polyZoj.db.DataSourceConfig
 
-fun main(args: Array<String>) {
-    io.ktor.server.netty.EngineMain.main(args)
+
+inline fun <reified T> getLogger(): Logger = LoggerFactory.getLogger(T::class.java)
+
+fun main() {
+    embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
+
 fun Application.module() {
-    configureRouting()
+    val logger = getLogger<Application>()
+
+    install(ContentNegotiation) {
+        json(Json {
+            prettyPrint = true
+            isLenient = true
+            ignoreUnknownKeys = true
+        })
+    }
+
+    val config = DataSourceConfig()
+    DBFactory.init(config)
+
+    val kafkaConfig = KafkaConfig()
+    val logTopicName = "log-requests"
+    kafkaConfig.createTopicIfNotExists(logTopicName, 1, 3.toShort())
+
+    val logConsumer = KafkaConsumerService(createKafkaConsumer("log-service-consumer"), listOf(logTopicName))
+    logConsumer.startConsuming { conversationId, message ->
+        logger.info("Received log request: $message")
+
+        try {
+            val data = Json.decodeFromString<DataPayload>(message)
+
+            if (data.params.size < 4) {
+                logger.warn("Invalid log payload: not enough parameters")
+                return@startConsuming
+            }
+
+            DBFactory.insertLog(
+                serviceName = data.params[0],
+                level = data.params[1],
+                message = data.params[2],
+                context = data.params[3]
+            )
+        } catch (e: Exception) {
+            logger.error("Failed to process log message", e)
+        }
+    }
 }
