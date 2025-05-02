@@ -1,6 +1,6 @@
 package ru.polyZoj
 
-import common.DataPayload
+import common.LogPayload
 import common.kafka.KafkaConfig
 import common.kafka.KafkaConsumerService
 import common.kafka.createKafkaConsumer
@@ -46,19 +46,15 @@ fun Application.module() {
         logger.info("Received log request: $message")
 
         try {
-            val data = Json.decodeFromString<DataPayload>(message)
-
-            if (data.params.size < 4) {
-                logger.warn("Invalid log payload: not enough parameters")
-                return@startConsuming
-            }
+            val logPayload = Json.decodeFromString<LogPayload>(message)
 
             DBFactory.insertLog(
-                serviceName = data.params[0],
-                level = data.params[1],
-                message = data.params[2],
-                context = data.params[3]
+                serviceName = logPayload.serviceName,
+                level = logPayload.level,
+                message = logPayload.logMessage,
+                context = logPayload.context
             )
+            logger.info("Log successfully inserted into the database")
         } catch (e: Exception) {
             logger.error("Failed to process log message", e)
         }
