@@ -8,6 +8,7 @@ import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 import common.DataPayload
 import ru.polyZoj.db.*
+import ru.polyZoj.repositories.ClubRepository
 import ru.polyZoj.exceptions.DuplicateFieldException
 import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
@@ -15,8 +16,7 @@ import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import ru.polyZoj.models.UserRegistration
-import ru.polyZoj.repositories.UserRepository
+import ru.polyZoj.models.*
 import java.time.LocalDate
 
 fun main() {
@@ -46,7 +46,7 @@ fun Application.module() {
     val kafkaConsumer = createKafkaConsumer("club-interface-consumer")
     val consumerService = KafkaConsumerService(kafkaConsumer, listOf("club-requests"))
 
-    val userRepository = UserRepository()
+    val clubRepository = ClubRepository()
 
     consumerService.startConsuming { conversationId, message ->
         log.info("Received message: $message")

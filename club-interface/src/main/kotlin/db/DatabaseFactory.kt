@@ -16,13 +16,8 @@ object DatabaseFactory {
             addLogger(Slf4jSqlDebugLogger)
 
             SchemaUtils.create(
-                UsersTable,
-                UserCredentialsTable,
-                UnitSystemsTable,
-                EnergySystemsTable,
-                PrimaryHealthGoalsTable,
-                UserParametersTable,
-                UserPreferencesTable
+                ClubsTable,
+                ClubMembersTable,
             )
         }
     }
