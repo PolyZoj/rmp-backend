@@ -1,5 +1,7 @@
 package common.kafka
 
+import common.DataPayload
+import common.DataPayloadDeserializer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -9,16 +11,16 @@ import java.util.Properties
 
 
 class KafkaConsumerService(
-    private val consumer: KafkaConsumer<String, String>,
+    private val consumer: KafkaConsumer<String, DataPayload>,
     private val topics: List<String>,
     private val pollDuration: Duration = Duration.ofMillis(1000)
 ) {
-    private var running = true
+    @Volatile private var running = true
 
     /**
      * Starts the consumer loop in a coroutine, processing messages using the provided handler.
      */
-    fun startConsuming(handler: suspend (conversationId: String, message: String) -> Unit) {
+    fun startConsuming(handler: suspend (conversationId: String, message: DataPayload) -> Unit) {
         consumer.subscribe(topics)
         CoroutineScope(Dispatchers.IO).launch {
             while (running) {
@@ -42,11 +44,11 @@ class KafkaConsumerService(
     }
 }
 
-fun createKafkaConsumer(groupId: String): KafkaConsumer<String, String> {
+fun createKafkaConsumer(groupId: String): KafkaConsumer<String, DataPayload> {
     val props = Properties().apply {
         put("bootstrap.servers", "kafka:9092")
         put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
-        put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
+        put("value.deserializer", DataPayloadDeserializer::class.java.name)
 
         put("group.id", groupId)
         put("auto.offset.reset", "earliest")
