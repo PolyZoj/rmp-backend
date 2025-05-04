@@ -68,19 +68,28 @@ private fun Application.configureKafka() {
 
 
     val producerService = KafkaProducerService(createKafkaProducer())
-    val consumerService = KafkaConsumerService(
+    val gatewayConsumerService = KafkaConsumerService(
         consumer = createKafkaConsumer("club-service-consumer"),
         topics = listOf("club-gateway-requests")
     )
 
+    val interfaceConsumerService = KafkaConsumerService(
+        consumer = createKafkaConsumer("club-service-consumer"),
+        topics = listOf("club-responses")
+    )
 
-    consumerService.startConsuming { conversationId, payload ->
-        handleKafkaMessage(conversationId, payload, producerService)
+
+    gatewayConsumerService.startConsuming { conversationId, payload ->
+        handleKafkaGatewayMessage(conversationId, payload, producerService)
+    }
+
+    interfaceConsumerService.startConsuming { conversationId, payload ->
+        handleKafkaInterfaceMessage(conversationId, payload, producerService)
     }
 }
 
 
-private fun handleKafkaMessage(
+private fun handleKafkaGatewayMessage(
     conversationId: String,
     payload: DataPayload,
     producer: KafkaProducerService
@@ -101,6 +110,29 @@ private fun handleKafkaMessage(
     }
 }
 
+private fun handleKafkaInterfaceMessage(
+    conversationId: String,
+    payload: DataPayload,
+    producer: KafkaProducerService
+) {
+    println("Consumed message -> ConversationID: $conversationId, Message: $payload.message")
+    
+    try {
+        when (payload.message.lowercase()) {
+            "clubcreated" -> {
+                producer.send("club-gateway-responses"
+                ,conversationId
+                ,DataPayload.build("created") {
+                    param("clubId", payload.getParam<String>("clubId").orEmpty())
+                })
+            }
+
+            else -> sendError(conversationId, "Invalid message", producer)
+        }
+    } catch (e: Exception) {
+        sendError(conversationId, "Invalid request format", producer)
+    }
+}
 
 private fun handleCreateClub(
     payload: DataPayload,
@@ -110,10 +142,10 @@ private fun handleCreateClub(
     val name = payload.getParam<String>("name").orEmpty()
     val description = payload.getParam<String>("description").orEmpty()
     val ownerId = payload.getParam<String>("ownerId").orEmpty()
-    // if (name.isBlank() || ownerId.isBlank()) {
-    //     sendError(conversationId, "Missing required params", producer)
-    //     return
-    // }
+    if (name.isBlank() || ownerId.isBlank() || ownerId.toDoubleOrNull() == null) {
+        sendError(conversationId, "Missing required params or Id not a number", producer)
+        return
+    }
 
     // val club = ClubDataSource.createClub(name, description, ownerId)
     // val response = DataPayload.build("created") {

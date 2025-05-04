@@ -172,8 +172,7 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
         "created" -> call.respond(
             HttpStatusCode.Created,
             ClubCreateResponse(
-                response.getParam("id") ?: "",
-                response.getParam("name") ?: ""
+                response.getParam<String>("clubId").orEmpty()
             )
         )
 

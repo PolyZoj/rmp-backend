@@ -20,7 +20,7 @@ data class ClubCreateRequest(val name: String, val description: String, val owne
 data class ClubMemberRequest(val userId: String)
 
 @Serializable
-data class ClubCreateResponse(val clubId: String, val name: String)
+data class ClubCreateResponse(val clubId: String)
 
 @Serializable
 data class ClubMemberResponse(val message: String,val userId: String, val clubId: String)
