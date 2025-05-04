@@ -12,6 +12,7 @@ import org.postgresql.util.PSQLException
 import ru.polyZoj.db.*
 import common.exceptions.DuplicateFieldException
 import common.models.FriendshipStatus
+import common.models.FriendshipStatusFrontEnd
 import ru.polyZoj.logger
 import common.models.User
 import common.models.UserBasicInfo
@@ -343,6 +344,49 @@ class UserRepository {
         }
     }
 
+    /** Get friendship status related with userId and friendId with statuses from `FriendshipStatusFrontEnd` */
+    suspend fun getFriendshipStatus(selfId: Int, friendId: Int): FriendshipStatusFrontEnd? {
+        log.debug("Fetching friendship status for selfId={} and friendId={}", selfId, friendId)
+        if (selfId == friendId) {
+            return FriendshipStatusFrontEnd.SELF
+        }
+        return try {
+            DatabaseFactory.read {
+                FriendshipsTable
+                    .selectAll()
+                    .where {
+                        ((FriendshipsTable.userId eq selfId) and (FriendshipsTable.friendId eq friendId)) or
+                                ((FriendshipsTable.userId eq friendId) and (FriendshipsTable.friendId eq selfId))
+                    }
+                    .singleOrNull()
+            }
+                ?.let { row ->
+                    val status = StaticLookups.nameForFriendshipStatusId(row[FriendshipsTable.friendshipStatus])
+                    when (status) {
+                        FriendshipStatus.ACCEPTED -> FriendshipStatusFrontEnd.YOUR_FRIEND
+                        FriendshipStatus.PENDING -> {
+                            if (row[FriendshipsTable.userId].value == selfId) {
+                                FriendshipStatusFrontEnd.INVITE_SENT
+                            } else {
+                                FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
+                            }
+                        }
+                        else -> FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
+                    }
+                }
+                .also { result ->
+                    if (result != null) {
+                        log.info("Friendship status found: {}", result)
+                    } else {
+                        log.info("No friendship status found for selfId={} and friendId={}", selfId, friendId)
+                    }
+                }
+        } catch (e: Exception) {
+            log.error("Error fetching friendship status for userId={} and friendId={}", selfId, friendId, e)
+            null
+        }
+    }
+
     /** Get all friendships for a user with a given status */
     suspend fun getFriendshipsWhereStatus(userId: Int, status: FriendshipStatus): List<Int> {
         return DatabaseFactory.read {
@@ -550,6 +594,21 @@ class UserRepository {
                 list.size,
                 userIds
             )
+        }
+    }
+
+    suspend fun updateClubId(userId: Int, clubId: Int): Boolean {
+        log.debug("Updating club ID for userId={} to clubId={}", userId, clubId)
+        return try {
+            DatabaseFactory.write {
+                UsersTable.update({ UsersTable.id eq userId }) {
+                    it[UsersTable.clubId] = clubId
+                }
+            }
+            true
+        } catch (e: Exception) {
+            log.error("Error updating club ID for userId={}", userId, e)
+            false
         }
     }
 

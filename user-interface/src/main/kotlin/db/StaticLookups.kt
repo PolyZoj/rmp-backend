@@ -38,5 +38,17 @@ object StaticLookups {
 
     fun idFor(friendship: FriendshipStatus): Int =
         friendshipStatusByName[friendship] ?: error("Unknown friendship status ${friendship.name}")
+
+    fun nameForUnitSystemId(unitId: Int): UnitSystem =
+        unitSystemByName.entries.firstOrNull { it.value == unitId }?.key
+            ?: error("Unknown unit system id $unitId")
+
+    fun nameForEnergySystemId(energyId: Int): EnergySystem =
+        energySystemByName.entries.firstOrNull { it.value == energyId }?.key
+            ?: error("Unknown energy system id $energyId")
+
+    fun nameForFriendshipStatusId(friendshipId: Int): FriendshipStatus =
+        friendshipStatusByName.entries.firstOrNull { it.value == friendshipId }?.key
+            ?: error("Unknown friendship status id $friendshipId")
 }
 
