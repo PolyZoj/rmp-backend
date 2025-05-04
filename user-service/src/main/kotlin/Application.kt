@@ -495,13 +495,13 @@ fun Application.module() {
                 )
             }
 
-            /** Needs userId, returns List<Int> */
+            /** Needs userId, returns List<UserBasicInfo> */
             "getFriendsList" -> {
                 handleUserConsumerCommand(
                     data,
                     conversationId,
                     onSuccess = { response ->
-                        val friendsList = response.getParam<List<Int>>("friends")
+                        val friendsList = response.getParam<List<UserBasicInfo>>("friends")
                             ?: throw IllegalArgumentException("friends not found in response")
                         DataPayload.build("success") {
                             param("friends", friendsList)

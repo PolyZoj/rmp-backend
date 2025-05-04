@@ -106,6 +106,12 @@ fun Application.module() {
         return userList
     }
 
+    suspend fun getFriendsHelper(userId: Int): List<UserBasicInfo> {
+        val friendsIds = userRepository.getFriends(userId)
+        val friendsInfo = userRepository.getUsersBasicInfo(friendsIds)
+        return friendsInfo
+    }
+
     suspend fun findFriendHelper(userId: Int, searchString: String): List<UserBasicInfo> {
         val friendsIds = userRepository.getFriends(userId)
         val friendsMatchedSubstring = userRepository.findUserIdsByUsernameSubstring(friendsIds, searchString)
@@ -379,15 +385,14 @@ fun Application.module() {
                     )
                     producerService.send("user-responses", conversationId, err)
                 } else {
-                    val requests = userRepository.getFriends(userId.toInt())
-                    log.info("Result of action: $requests")
-                    val resp = if (requests.isEmpty()) {
+                    val friendsInfoList = getFriendsHelper(userId.toInt())
+                    val resp = if (friendsInfoList.isEmpty()) {
                         DataPayload.build(userId) {
                             param("friends", emptyList<String>())
                         }
                     } else {
                         DataPayload.build(userId) {
-                            param("friends", requests)
+                            param("friends", friendsInfoList)
                         }
                     }
                     producerService.send("user-responses", conversationId, resp)
