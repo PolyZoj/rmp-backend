@@ -6,7 +6,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.json.Json
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
 import java.util.UUID
@@ -16,14 +15,13 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 
 class RequestProcessor {
-    suspend fun processAuthRequest(
+    suspend fun processRequest(
         payload: DataPayload,
         topic: String,
         call: ApplicationCall,
-        producer: KafkaProducer<String, String>,
+        producer: KafkaProducer<String, DataPayload>,
         responses: ConcurrentHashMap<String, CompletableDeferred<DataPayload>>,
         mutex: Mutex,
-        json: Json,
         handleSuccessfulResponse: suspend (String, DataPayload, ApplicationCall) -> Unit
     ) {
         val correlationId = UUID.randomUUID().toString()
@@ -36,24 +34,31 @@ class RequestProcessor {
         producer.send(ProducerRecord(
             topic,
             correlationId,
-            json.encodeToString(payload)
+            payload
         ))
 
         try {
-            val result = withTimeoutOrNull(5000) { responseDeferred.await() }
+            val resultPayload = withTimeoutOrNull(5000) { responseDeferred.await() }
 
             when {
-                result == null -> call.respond(
+                resultPayload == null -> call.respond(
                     HttpStatusCode.GatewayTimeout,
                     mapOf("error" to "Service timeout")
                 )
 
-                result.message.startsWith("error:") -> call.respond(
-                    HttpStatusCode.BadRequest,
-                    mapOf("error" to result.message.removePrefix("error:"))
-                )
+                /** See `DataPayload.error` */
+                resultPayload.message.startsWith("error") -> {
+                    val httpStatusCode = resultPayload.getParam<Int>("status")
+                        ?: 500
+                    val errorMessage = resultPayload.getParam<String>("description") ?: "Unknown error"
+                    call.respond(
+                        HttpStatusCode.fromValue(httpStatusCode),
+                        mapOf("error" to errorMessage)
+                    )
+                }
 
-                else -> handleSuccessfulResponse(payload.message, result, call)
+
+                else -> handleSuccessfulResponse(payload.message, resultPayload, call)
             }
         } finally {
             mutex.withLock { responses.remove(correlationId) }

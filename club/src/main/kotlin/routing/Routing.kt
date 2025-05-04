@@ -39,12 +39,11 @@ fun Application.configureRouting() {
     kafkaConfig.createTopicIfNotExists("club-gateway-requests", 1, 3.toShort())
     kafkaConfig.createTopicIfNotExists("club-gateway-responses", 1, 3.toShort())
 
-
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
     
     val kafkaProducer = createKafkaProducer()
-    val producer= KafkaProducerService(kafkaProducer)
+    val producer = KafkaProducerService(kafkaProducer)
 
     val consumer = createKafkaConsumer("club-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
@@ -54,11 +53,14 @@ fun Application.configureRouting() {
             records.forEach { record ->
                 mutex.withLock {
                     try {
-                        val response = json.decodeFromString<DataPayload>(record.value())
+                        val response = record.value()
                         responses[record.key()]?.complete(response)
                     } catch (e: Exception) {
                         responses[record.key()]?.complete(
-                            DataPayload("error", params = listOf("Processing error"))
+                            DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Processing error"
+                            )
                         )
                     }
                 }
@@ -71,57 +73,55 @@ fun Application.configureRouting() {
         route("/api/v1/clubs") {
             post("/create") {
                 val request = call.receive<ClubCreateRequest>()
-                val payload = DataPayload(
-                    message = "create",
-                    params = listOf(request.name, request.description, request.ownerId)
-                )
+                val payload = DataPayload.build("create") {
+                    param("name", request.name)
+                    param("description", request.description)
+                    param("ownerId", request.ownerId)
+                }
                 
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
 
             get("/list") {     
-                val limit = call.parameters["limit"] ?: throw IllegalArgumentException("Missing limit")
-                val offset = call.parameters["offset"] ?: throw IllegalArgumentException("Missing offset")
-                val payload = DataPayload(
-                    message = "listClubs",
-                    params = listOf(limit.toString(), offset.toString())
-                )
+                val limit = call.parameters["limit"] ?: "10"
+                val offset = call.parameters["offset"] ?: "0"
+                val payload = DataPayload.build("listClubs") {
+                    param("limit", limit.toInt())
+                    param("offset", offset.toInt())
+                }
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
 
             post("/{clubId}/members") {
                 val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
                 val request = call.receive<ClubMemberRequest>()
-                val payload = DataPayload(
-                    message = "addMember",
-                    params = listOf(clubId, request.userId)
-                )
+                val payload = DataPayload.build("addMember") {
+                    param("clubId", clubId)
+                    param("userId", request.userId)
+                }
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
 
             delete("/{clubId}/members/{userId}") {
                 val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
                 val userId = call.parameters["userId"] ?: throw IllegalArgumentException("Missing user ID")
-                val payload = DataPayload(
-                    message = "removeMember",
-                    params = listOf(clubId, userId)
-                )
+                val payload = DataPayload.build("removeMember") {
+                    param("clubId", clubId)
+                    param("userId", userId)
+                }
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
 
             get("/{clubId}") {
                 val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
-                val payload = DataPayload(
-                    message = "getInfo",
-                    params = listOf(clubId)
-                )
+                val payload = DataPayload.build("getInfo") {
+                    param("clubId", clubId)
+                }
                 processClubRequest(payload, call, producer, responses, mutex, json)
             }
         }
     }
 }
-
-
 
 private suspend fun processClubRequest(
     payload: DataPayload,
@@ -140,7 +140,7 @@ private suspend fun processClubRequest(
     producer.send(
         "club-gateway-requests",
         correlationId,
-        json.encodeToString(payload)
+        payload
     )
     try {
         val result = withTimeoutOrNull(5000) { responseDeferred.await() }
@@ -151,10 +151,14 @@ private suspend fun processClubRequest(
                 mapOf("error" to "Club service timeout")
             )
 
-            result.message == "error" -> call.respond(
-                HttpStatusCode.BadRequest,
-                mapOf<String, String>("error" to (result.params.firstOrNull() ?: "Unknown error"))
-            )
+            result.message == "error" -> {
+                val status = result.getParam<Int>("status") ?: 400
+                val description = result.getParam<String>("description") ?: "Unknown error"
+                call.respond(
+                    HttpStatusCode.fromValue(status),
+                    mapOf("error" to description)
+                )
+            }
 
             else -> handleClubResponse(result, call, json)
         }
@@ -168,41 +172,41 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
         "created" -> call.respond(
             HttpStatusCode.Created,
             ClubCreateResponse(
-                response.params.get(0),
-                response.params.get(1)
+                response.getParam("id") ?: "",
+                response.getParam("name") ?: ""
             )
         )
 
-        "clubsList" ->{
-        val clubsJson = response.params.getOrNull(0) ?: "[]"
-        val clubs = json.decodeFromString<List<Club>>(clubsJson)
-        call.respond(
-            HttpStatusCode.OK,
-            mapOf("data" to clubs)  
-        )}
+        "clubsList" -> {
+            val clubs = response.getParam<List<Club>>("clubs") ?: emptyList()
+            call.respond(
+                HttpStatusCode.OK,
+                mapOf("data" to clubs)
+            )
+        }
 
         "memberAdded", "memberRemoved" -> call.respond(
             HttpStatusCode.OK,
-
             ClubMemberResponse(
                 response.message,
-                response.params.get(0),
-                response.params.get(1)
+                response.getParam("userId") ?: "",
+                response.getParam("clubId") ?: ""
             )
         )
 
-        "clubInfo" -> call.respond(
-            HttpStatusCode.OK,
-            ClubInfoResponse(
-                Club(
-                    response.params.get(0),
-                    response.params.get(1),
-                    response.params.get(2),
-                    response.params.get(3),
-                    json.decodeFromString<MutableSet<String>>(response.params.get(4))
-                )
+        "clubInfo" -> {
+            val club = Club(
+                response.getParam("id") ?: "",
+                response.getParam("name") ?: "",
+                response.getParam("description") ?: "",
+                response.getParam("ownerId") ?: "",
+                response.getParam<MutableSet<String>>("members") ?: mutableSetOf()
             )
-        )
+            call.respond(
+                HttpStatusCode.OK,
+                ClubInfoResponse(club)
+            )
+        }
 
         else -> call.respond(
             HttpStatusCode.InternalServerError,
