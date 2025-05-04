@@ -59,6 +59,15 @@ enum class FriendshipStatus {
     @SerialName("blocked")   BLOCKED
 }
 
+/** “YourFriend/InviteSent/NotYourFriend/Self” */
+@Serializable
+enum class FriendshipStatusFrontEnd {
+    @SerialName("YourFriend") YOUR_FRIEND,
+    @SerialName("InviteSent") INVITE_SENT,
+    @SerialName("NotYourFriend") NOT_YOUR_FRIEND,
+    @SerialName("Self") SELF,
+}
+
 /** Table "user_parameters" **/
 @Serializable
 data class UserParameters @OptIn(ExperimentalTime::class) constructor(

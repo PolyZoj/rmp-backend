@@ -126,6 +126,8 @@ fun Application.configureRouting() {
 
                 // GET /users/{id} - получение информации о конкретном пользователе
                 get("/{id}") {
+                    val userId = verifyJWTandGetUserId(call)
+                        ?: return@get call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
                     val id = call.parameters["id"]
                     log.info("GET /api/v1/users/{}", id)
                     if (id == null) {
@@ -135,6 +137,7 @@ fun Application.configureRouting() {
 
                     val requestPayload = DataPayload.build("userInfo") {
                         param("user_id", id)
+                        param("self_id", userId)
                     }
                     log.info("sending request to user-gateway-requests: {}", requestPayload)
                     reqProcessor.processRequest(
@@ -302,8 +305,8 @@ fun Application.configureRouting() {
                         )
                     }
 
-                    get("/find") {
-                        log.info("GET /api/v1/users/friends/find")
+                    post("/find") {
+                        log.info("POST /api/v1/users/friends/find")
                         // "findFriend"
                         handleFriendAction(
                             call,

@@ -16,6 +16,5 @@ logging:
     ru.polyZoj: DEBUG
     org.jetbrains.exposed: INFO
     Exposed: DEBUG
-    org.flywaydb: INFO
     io.ktor: INFO
     com.zaxxer.hikari: INFO

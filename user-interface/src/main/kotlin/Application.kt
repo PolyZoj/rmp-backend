@@ -230,17 +230,44 @@ fun Application.module() {
             "userInfo" -> {
                 log.info("Get user DTO command received, data: $data")
                 val userId = data.getParam<String>("user_id")
-                if (userId == null) {
+                val selfId = data.getParam<String>("self_id")
+                if (userId == null || selfId == null) {
                     val err = DataPayload.error(
                         status = HttpStatusCode.BadRequest,
-                        description = "Missing user ID"
+                        description = "Missing user ID or self ID"
                     )
                     producerService.send("user-responses", conversationId, err)
                 } else {
                     val userDTO = userRepository.getUserDTO(userId.toInt())
+                    val status = userRepository.getFriendshipStatus(
+                        selfId = selfId.toInt(),
+                        friendId = userId.toInt()
+                    )
                     if (userDTO != null) {
                         val resp = DataPayload.build(userId) {
-                            param("user_dto", userDTO)
+                            with(userDTO.user) {
+                                param("user_id",        userId)
+                                param("first_name",     firstName)
+                                param("last_name",      lastName)
+                                param("email",          email)
+                                param("avatar_url",     avatarUrl)
+                                param("is_admin",       isAdmin)
+                                param("club_id",        clubId)
+                            }
+                            param("username",           userDTO.username)
+                            param("weight",             userDTO.weight)
+                            param("height",             userDTO.height)
+                            param("birth_date",         userDTO.birthDate)
+                            param("unit_system",        userDTO.unitSystem)
+                            param("energy_system",      userDTO.energySystem)
+                            param("health_goal",        userDTO.healthGoal)
+                            param("daily_step_goal",    userDTO.dailyStepGoal)
+                            param("water_intake_goal",  userDTO.waterIntakeGoal)
+                            param("calorie_goal",       userDTO.calorieGoal)
+                            param("sleep_goal",         userDTO.sleepGoal)
+                            param("workouts_goal",      userDTO.workoutsGoal)
+                            param("status",             status)
+
                         }
                         producerService.send("user-responses", conversationId, resp)
                     } else {
@@ -415,6 +442,33 @@ fun Application.module() {
                         param("possible-friend", friendsInfo)
                     }
                     producerService.send("user-responses", conversationId, resp)
+                }
+            }
+
+            "updateClubId" -> {
+                log.info("Update club id, data: $data")
+                val userId = data.getParam<String>("user_id")
+                val clubId = data.getParam<String>("club_id")
+                if (userId == null || clubId == null) {
+                    val err = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Missing user ID or club ID"
+                    )
+                    producerService.send("user-responses", conversationId, err)
+                } else {
+                    val success = userRepository.updateClubId(userId.toInt(), clubId.toInt())
+                    if (success) {
+                        val resp = DataPayload.build("success") {
+                            param("success", true)
+                        }
+                        producerService.send("user-responses", conversationId, resp)
+                    } else {
+                        val err = DataPayload.error(
+                            status = HttpStatusCode.NotFound,
+                            description = "User or club not found"
+                        )
+                        producerService.send("user-responses", conversationId, err)
+                    }
                 }
             }
 
