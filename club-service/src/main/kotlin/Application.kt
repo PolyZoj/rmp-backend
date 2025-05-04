@@ -110,17 +110,18 @@ private fun handleCreateClub(
     val name = payload.getParam<String>("name").orEmpty()
     val description = payload.getParam<String>("description").orEmpty()
     val ownerId = payload.getParam<String>("ownerId").orEmpty()
-    if (name.isBlank() || ownerId.isBlank()) {
-        sendError(conversationId, "Missing required params", producer)
-        return
-    }
+    // if (name.isBlank() || ownerId.isBlank()) {
+    //     sendError(conversationId, "Missing required params", producer)
+    //     return
+    // }
 
-    val club = ClubDataSource.createClub(name, description, ownerId)
-    val response = DataPayload.build("created") {
-        param("id", club.id)
-        param("name", club.name)
-    }
-    producer.send("club-gateway-responses", conversationId, response)
+    // val club = ClubDataSource.createClub(name, description, ownerId)
+    // val response = DataPayload.build("created") {
+    //     param("id", club.id)
+    //     param("name", club.name)
+    // }
+    // producer.send("club-gateway-responses", conversationId, response)
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleListClubs(

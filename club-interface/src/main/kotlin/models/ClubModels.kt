@@ -30,17 +30,6 @@ data class ClubMember @OptIn(ExperimentalTime::class) constructor(
     @SerialName("joined_at")
     @Serializable(with = InstantSerializer::class)
     val joinedAt: Instant,
-    val role: String = "member"
-)
-
-/**
- * Club Creation Request DTO
- */
-@Serializable
-data class ClubCreationRequest(
-    val name: String,
-    val description: String,
-    @SerialName("owner_id") val ownerId: Int
 )
 
 /**
@@ -58,7 +47,6 @@ data class ClubUpdateRequest(
 @Serializable
 data class ClubMemberAddRequest(
     @SerialName("user_id") val userId: Int,
-    val role: String = "member"
 )
 
 /**

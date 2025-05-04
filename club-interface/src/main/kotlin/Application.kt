@@ -18,6 +18,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import ru.polyZoj.models.*
 import java.time.LocalDate
+import io.ktor.http.HttpStatusCode
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -48,14 +49,37 @@ fun Application.module() {
 
     val clubRepository = ClubRepository()
 
-    consumerService.startConsuming { conversationId, message ->
-        log.info("Received message: $message")
-        val data = Json.decodeFromString<DataPayload>(message)
+    consumerService.startConsuming { conversationId, data ->
+        log.info("Received message: $data")
         val command = data.message
-        val args = data.params
         when (command) {
             "create" -> {
-                //TODO
+                log.info("Club create command received, data: $data")
+                val ownerId = data.getParam<String>("ownerId")
+                val description = data.getParam<String>("description")
+                val name = data.getParam<String>("name")
+                if (name == null || description == null || ownerId == null){
+                    val response = DataPayload.error(
+                        HttpStatusCode.BadRequest,
+                        description = "Invalid credentials"
+                    )
+                    producerService.send("club-responses", conversationId, response)
+                } else {
+                    val clubId = clubRepository.createClub(name, description, ownerId.toInt())
+                    val response = if (clubId != null) {
+                        log.info("Club $name created with clubId = $clubId")
+                        DataPayload.build("clubCreated") {
+                            param("clubId", clubId.toString())
+                        }
+                    } else {
+                        DataPayload.error(
+                            HttpStatusCode.BadRequest,
+                            description = "Invalid credentials"
+                        )
+                    }
+                    log.info("sending response to club-responses: $response")
+                    producerService.send("club-responses", conversationId, response)
+                }
             }
 
             "listclubs" -> {
@@ -75,9 +99,12 @@ fun Application.module() {
             }
 
             else -> {
-                val err = DataPayload("error", listOf("Unknown command"))
+                val err = DataPayload.error(
+                    HttpStatusCode.BadRequest,
+                    description = "Invalid message"
+                )
                 log.error("Unknown command: $command")
-                producerService.send("club-responses", conversationId, Json.encodeToString(err))
+                producerService.send("club-responses", conversationId, err)
             }
         }
     }

@@ -91,6 +91,81 @@ services:
     labels:
       - "com.docker.compose.project=rmp-backend"
       - "com.docker.compose.service=psql_users_replica"
+
+
+
+  psql_club_master:
+    build:
+      context: ./db/template
+    image: rmp-backend-psql_club_master
+    environment:
+      POSTGRES_DB: club_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data
+      PGENCODING: UTF8
+      PGLOCALE: en_US.UTF-8
+      REPL_PASSWORD: ${DB_REPL_PASSWORD:-repl_pass}
+      PEER_HOST: psql_club_replica
+      ROLE: master
+    entrypoint: ["/home/scripts/custom-entrypoint.sh"]
+    volumes:
+      - psql_club_master_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.service=psql_club"
+
+  # Реплика БД пользователей для операций чтения
+  psql_club_replica:
+    build:
+      context: ./db/template
+    image: rmp-backend-psql_club_replica
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data
+      PGENCODING: UTF8
+      PGLOCALE: en_US.UTF-8
+      REPL_PASSWORD: ${DB_REPL_PASSWORD:-repl_pass}
+      PEER_HOST: psql_club_master
+      ROLE: hot_standby
+    entrypoint: ["/home/scripts/custom-entrypoint.sh"]
+    volumes:
+      - psql_club_replica_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - psql_club_master
+    networks:
+      - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.service=psql_club_replica"
   #
   #  psql_clubs:
   #    image: postgres:alpine
@@ -343,6 +418,36 @@ services:
         limits:
           cpus: "0.75"
           memory: 512M
+
+  club-interface:
+    build:
+      context: .
+      dockerfile: club-interface/Dockerfile
+      args:
+        SERVICE: club-interface
+        <<: *build-args
+    image: rmp-backend-club-interface
+    depends_on:
+      - psql_club_master
+      - psql_club_replica
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      DB_HOST_MASTER: psql_club_master
+      DB_PORT_MASTER: 5432
+      DB_HOST_REPLICA: psql_club_replica
+      DB_PORT_REPLICA: 5432
+      DB_NAME: club_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    <<: *microservice-common
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
 #  challenges-service:
 #    build:
 #      context: .
@@ -457,10 +562,14 @@ volumes:
     labels:
       - "com.docker.compose.project=rmp-backend"
       - "com.docker.compose.volume=psql_users_replica_data"
-  psql_clubs_data:
+  psql_club_master_data:
     labels:
       - "com.docker.compose.project=rmp-backend"
-      - "com.docker.compose.volume=psql_clubs_data"
+      - "com.docker.compose.volume=psql_club_master_data"
+  psql_club_replica_data:
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.volume=psql_club_replica_data"
   psql_challenges_data:
     labels:
       - "com.docker.compose.project=rmp-backend"
