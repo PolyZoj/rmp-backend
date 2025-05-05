@@ -22,6 +22,9 @@ import common.models.UserUpdatable
 import org.jetbrains.exposed.sql.lowerCase
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.update
+import ru.polyZoj.cache.RedisFactory
+import ru.polyZoj.cache.getJson
+import ru.polyZoj.cache.setJson
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaInstant
@@ -30,9 +33,32 @@ import kotlin.time.toKotlinInstant
 class UserRepository {
     private val log = logger<UserRepository>()
 
+    /**
+     * Cache keys:
+     * - userIdOf:username:<username>
+     * - usernameOf:userId:<userId>
+     * - passwordOf:userId:<userId>
+     * - userDTOOf:userId:<userId>
+     * - friendshipStatusFrontEndOf:<selfId>:<friendId>
+     * - friendshipRequestsOf:userId:<selfId>
+     * - friendsOf:userId:<userId>
+     * - allIds
+     */
+    private val redis = RedisFactory.sync
+
+
     /** Look up a user’s id by username */
     suspend fun findByUsername(username: String): Int? {
         log.debug("Entering findByUsername with username='{}'", username)
+
+        val cachedId = redis.getJson<Int>("userIdOf:username:$username")
+        if (cachedId != null) {
+            log.info("User ID found in cache for username='{}'", username)
+            return cachedId
+        } else {
+            log.debug("No user ID found in cache for username='{}'", username)
+        }
+
         val result: Int? = DatabaseFactory.read {
             UserCredentialsTable.select(UserCredentialsTable.userId)
                 .where { UserCredentialsTable.username eq username }
@@ -42,6 +68,8 @@ class UserRepository {
         }
         if (result != null) {
             log.info("User found for username='{}', userId={} ", username, result)
+            log.debug("Setting cache for userIdOf:username='{}'", username)
+            redis.setJson("userIdOf:username:$username", result, 600)
         } else {
             log.info("No user found for username='{}'", username)
         }
@@ -50,6 +78,15 @@ class UserRepository {
 
     suspend fun findUsernameById(userId: Int): String? {
         log.debug("Entering findUsernameById with userId={}", userId)
+
+        val cachedUsername = redis.getJson<String>("usernameOf:userId:$userId")
+        if (cachedUsername != null) {
+            log.info("Username found in cache for userId={}", userId)
+            return cachedUsername
+        } else {
+            log.debug("No username found in cache for userId={}", userId)
+        }
+
         val result = DatabaseFactory.read {
             UserCredentialsTable.select(UserCredentialsTable.username)
                 .where { UserCredentialsTable.userId eq userId }
@@ -59,6 +96,8 @@ class UserRepository {
         }
         if (result != null) {
             log.info("Username found for userId={}, username='{}'", userId, result)
+            log.debug("Setting cache for usernameOf:userId={}", userId)
+            redis.setJson("usernameOf:userId:$userId", result, 600)
         } else {
             log.info("No username found for userId={}", userId)
         }
@@ -68,6 +107,22 @@ class UserRepository {
     /** Return userId if credentials match **/
     suspend fun login(username: String, password: String): Int? {
         log.debug("Attempting login for username='{}'", username)
+
+        val cachedUsername = redis.getJson<String>("usernameOf:username:$username")
+        val cachedPassword = redis.getJson<String>("passwordOf:password")
+        val cachedId = redis.getJson<Int>("userIdOf:username:$username")
+        if (cachedUsername != null && cachedPassword != null && cachedId != null) {
+            log.info("Credentials found in cache for username='{}'", username)
+            if (cachedUsername == username && cachedPassword == password) {
+                log.info("Login successful for username='{}'", username)
+                return cachedId
+            } else {
+                log.warn("Invalid credentials found in cache for username='{}'", username)
+            }
+        } else {
+            log.debug("No credentials found in cache for username='{}'", username)
+        }
+
         val userId: Int? = DatabaseFactory.read {
             UserCredentialsTable.select(UserCredentialsTable.userId)
                 .where { (UserCredentialsTable.username eq username) and (UserCredentialsTable.password eq password) }
@@ -77,6 +132,10 @@ class UserRepository {
         }
         if (userId != null) {
             log.info("Login successful for username='{}', userId={}", username, userId)
+            log.debug("Setting caches for userId={}", userId)
+            redis.setJson("userIdOf:username:$username", userId, 600)
+            redis.setJson("usernameOf:userId:$userId", username, 600)
+            redis.setJson("passwordOf:userId:$userId", password, 600)
         } else {
             log.info("Login failed for username='{}'", username)
         }
@@ -152,6 +211,12 @@ class UserRepository {
                 log.debug("Inserted into UserPreferencesTable for userId={}", userId)
                 userId
             }
+
+            log.debug("Setting caches for userId={}", newUserId)
+            redis.setJson("usernameOf:userId:${newUserId}", reg.username, 600)
+            redis.setJson("userIdOf:username:${reg.username}", newUserId, 600)
+            redis.setJson("passwordOf:userId:${newUserId}", reg.password, 600)
+
             log.info("User registered successfully with userId={}", newUserId)
             return newUserId
         } catch (e: ExposedSQLException) {
@@ -177,6 +242,14 @@ class UserRepository {
     @OptIn(ExperimentalTime::class)
     suspend fun getUserDTO(userId: Int): UserDTO? {
         log.debug("Fetching UserDTO for userId={}", userId)
+
+        val cachedUserDTO = redis.getJson<UserDTO>("userDTOOf:userId:$userId")
+        if (cachedUserDTO != null) {
+            log.info("UserDTO found in cache for userId={}", userId)
+            return cachedUserDTO
+        } else {
+            log.debug("No UserDTO found in cache for userId={}", userId)
+        }
 
         val userDTO: UserDTO? = try {
             DatabaseFactory.read {
@@ -251,6 +324,8 @@ class UserRepository {
 
         if (userDTO != null) {
             log.info("UserDTO fetched successfully for userId={}", userId)
+            log.debug("Setting cache for userId={}", userId)
+            redis.setJson("userDTOOf:userId:$userId", userDTO, 600)
         } else {
             log.info("No UserDTO found or error occurred for userId={}", userId)
         }
@@ -268,6 +343,10 @@ class UserRepository {
 
             if (deletedCount > 0) {
                 log.info("User deletion (with cascade) succeeded for userId={}", userId)
+                log.debug("Deleting user from cache for userId={}", userId)
+                redis.del("userDTOOf:userId:$userId")
+                redis.del("usernameOf:userId:$userId")
+                redis.del("passwordOf:userId:$userId")
                 true
             } else {
                 log.warn("No user found to delete for userId={}", userId)
@@ -337,6 +416,9 @@ class UserRepository {
                     }
                 }
             }
+            log.debug("Deleting cache for userId={}", userId)
+            redis.del("userDTOOf:userId:$userId")
+
             true
         } catch (e: Exception) {
             log.error("Error updating user data for userId={}", userId, e)
@@ -348,8 +430,19 @@ class UserRepository {
     suspend fun getFriendshipStatus(selfId: Int, friendId: Int): FriendshipStatusFrontEnd? {
         log.debug("Fetching friendship status for selfId={} and friendId={}", selfId, friendId)
         if (selfId == friendId) {
+            log.debug("Setting cache for selfId={} and friendId={}", selfId, friendId)
+            redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", FriendshipStatusFrontEnd.SELF, 600)
             return FriendshipStatusFrontEnd.SELF
         }
+
+        val cachedStatus = redis.getJson<FriendshipStatusFrontEnd>("friendshipStatusFrontEndOf:$selfId:$friendId")
+        if (cachedStatus != null) {
+            log.info("Friendship status found in cache for selfId={} and friendId={}", selfId, friendId)
+            return cachedStatus
+        } else {
+            log.debug("No friendship status found in cache for selfId={} and friendId={}", selfId, friendId)
+        }
+
         return try {
             DatabaseFactory.read {
                 FriendshipsTable
@@ -377,6 +470,8 @@ class UserRepository {
                 .also { result ->
                     if (result != null) {
                         log.info("Friendship status found: {}", result)
+                        log.debug("Setting cache for friendship status for selfId={} and friendId={}", selfId, friendId)
+                        redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", result, 600)
                     } else {
                         log.info("No friendship status found for selfId={} and friendId={}", selfId, friendId)
                     }
@@ -430,8 +525,33 @@ class UserRepository {
     /** Finds all friendship requests for a user (status pending)*/
     suspend fun getFriendshipRequests(userId: Int): List<Int> {
         log.debug("Fetching friendship requests for userId={}", userId)
+
+        val cachedRequests = redis.getJson<List<Int>>("friendshipRequestsOf:userId:$userId")
+        if (cachedRequests != null) {
+            log.info("Friendship requests found in cache for userId={}", userId)
+            return cachedRequests
+        } else {
+            log.debug("No friendship requests found in cache for userId={}", userId)
+        }
+
         return getFriendshipsWhereStatus(userId, FriendshipStatus.PENDING)
-            .also { log.info("Found {} friendship requests for userId={}", it.size, userId) }
+            .also {
+                log.info("Found {} friendship requests for userId={}", it.size, userId)
+                log.debug("Setting cache for friendship requests for userId={}", userId)
+                redis.setJson("friendshipRequestsOf:userId:$userId", it, 600)
+            }
+    }
+
+    fun deleteFriendshipCache(uId: Int, fId: Int) {
+        log.debug("Deleting cache for friends and requests of userId={} and friendId={}", fId, uId)
+        redis.del(
+            "friendshipStatusFrontEndOf:$fId:$uId",
+            "friendshipStatusFrontEndOf:$uId:$fId",
+            "friendshipRequestsOf:userId:$fId",
+            "friendshipRequestsOf:userId:$uId",
+            "friendsOf:userId:$fId",
+            "friendsOf:userId:$uId"
+        )
     }
 
     /** Set friendship request status. Returns success boolean */
@@ -453,6 +573,7 @@ class UserRepository {
                             return@write false
                         } else {
                             log.info("Friendship request updated successfully for userId={} and friendId={}", fId, uId)
+                            deleteFriendshipCache(uId, fId)
                             return@write true
                         }
                     }
@@ -472,6 +593,7 @@ class UserRepository {
                                 it[friendId] = fId
                                 it[friendshipStatus] = statusId
                             }
+                            deleteFriendshipCache(uId, fId)
                             return@write true
                         } else {
                             log.debug("Friendship already exists, updating status")
@@ -483,6 +605,7 @@ class UserRepository {
                             }) {
                                 it[friendshipStatus] = statusId
                             }
+                            deleteFriendshipCache(uId, fId)
                             return@write true
                         }
                     }
@@ -508,6 +631,7 @@ class UserRepository {
                     (FriendshipsTable.friendId eq userId)
                 }
             }
+            deleteFriendshipCache(userId, friendId)
             true
         } catch (e: Exception) {
             log.error("Error removing friendship from userId={} to friendId={}", userId, friendId, e)
@@ -518,8 +642,21 @@ class UserRepository {
     /** Get all friends for a user (status accepted) */
     suspend fun getFriends(userId: Int): List<Int> {
         log.debug("Fetching friends for userId={}", userId)
+
+        val cachedFriends = redis.getJson<List<Int>>("friendsOf:userId:$userId")
+        if (cachedFriends != null) {
+            log.info("Friends found in cache for userId={}", userId)
+            return cachedFriends
+        } else {
+            log.debug("No friends found in cache for userId={}", userId)
+        }
+
         return getFriendshipsWhereStatus(userId, FriendshipStatus.ACCEPTED)
-            .also { log.info("Found {} friends for userId={}", it.size, userId) }
+            .also {
+                log.info("Found {} friends for userId={}", it.size, userId)
+                log.debug("Setting cache for friends for userId={}", userId)
+                redis.setJson("friendsOf:userId:$userId", it, 600)
+            }
     }
 
     /**
@@ -609,6 +746,32 @@ class UserRepository {
         } catch (e: Exception) {
             log.error("Error updating club ID for userId={}", userId, e)
             false
+        }
+    }
+
+    suspend fun getAllIds(): List<Int> {
+        log.debug("Fetching all user IDs")
+
+        val cachedIds = redis.getJson<List<Int>>("allIds")
+        if (cachedIds != null) {
+            log.info("Found {} user IDs for all user IDs", cachedIds.size)
+            return cachedIds
+        } else {
+            log.debug("No user IDs found in cache for all user IDs")
+        }
+
+        return try {
+            DatabaseFactory.read {
+                UsersTable
+                    .selectAll()
+                    .map { it[UsersTable.id].value }
+            }
+        } catch (e: Exception) {
+            log.error("Error fetching all user IDs", e)
+            emptyList()
+        }.also { list ->
+            log.info("Fetched {} user IDs", list.size)
+            redis.setJson("allIds", list)
         }
     }
 
