@@ -126,11 +126,11 @@ private fun handleKafkaInterfaceMessage(
                     param("clubId", payload.getParam<String>("clubId").orEmpty())
                 })
             }
-            "clubslist" -> {
+            "clubslisted" -> {
                 producer.send("club-gateway-responses"
                 ,conversationId
-                ,DataPayload.build("clubslist") {
-                    param("clubs", payload.getParam<List<Club>>("clubs").orEmpty())
+                ,DataPayload.build("clubsListed") {
+                    param("clubs", payload.getParam<List<Club?>>("clubs"))
                 })
             }
             "memberadded" -> {

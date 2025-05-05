@@ -81,7 +81,26 @@ fun Application.module() {
                     producerService.send("club-responses", conversationId, response)
                 }
             }
+            
             "listclubs" -> {
+                log.info("List clubs command received, data: $data")
+                val limit = data.getParam<Int>("limit")
+                val offset = data.getParam<Int>("offset")
+                
+                if (limit == null || offset == null) {
+                    val response = DataPayload.error(
+                        HttpStatusCode.BadRequest,
+                        description = "Missing limit or offset parameters"
+                    )
+                    producerService.send("club-responses", conversationId, response)
+                } else {
+                    val clubs = clubRepository.listClubs(limit, offset)
+                    val response = DataPayload.build("clubsListed") {
+                        param("clubs", clubs)
+                    }
+                    log.info("Sending list of ${clubs.size} clubs")
+                    producerService.send("club-responses", conversationId, response)
+                }
             }
 
             "addmember" -> {

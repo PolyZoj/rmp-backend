@@ -87,6 +87,7 @@ class ClubRepository {
             false
         }
     }
+    
     @OptIn(ExperimentalTime::class)
     fun getClub(clubId: Int): Club? {
         log.info("Fetching club with clubId={}", clubId)
@@ -114,5 +115,32 @@ class ClubRepository {
             else log.info("No club found with clubId={}", clubId)
         }
     }
-
+    @OptIn(ExperimentalTime::class)
+    fun listClubs(limit: Int, offset: Int): List<Club?> {
+        log.info("Listing clubs with pagination - limit: {}, offset: {}", limit, offset)
+        
+        return DatabaseFactory.read {
+            ClubsTable
+                .selectAll()
+                .limit(limit)
+                .offset(offset.toLong())
+                .map { row ->
+                    val clubId = row[ClubsTable.id].value
+                    
+                    Club(
+                        id = clubId.toString(),
+                        name = row[ClubsTable.name],
+                        description = row[ClubsTable.description],
+                        ownerId = row[ClubsTable.ownerId].toString(),
+                        members = ClubMembersTable
+                            .selectAll()
+                            .where { ClubMembersTable.clubId eq clubId }
+                            .map { it[ClubMembersTable.userId].toString() }
+                            .toMutableSet()
+                    )
+                }
+        }.also {
+            log.info("Returning ${it.size} clubs")
+        }
+    }
 }

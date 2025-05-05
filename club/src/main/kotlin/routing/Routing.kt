@@ -31,6 +31,9 @@ import common.kafka.KafkaProducerService
 import common.kafka.RequestProcessor
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.principal
 
 fun Application.configureRouting() {
     val json = Json { ignoreUnknownKeys = true }
@@ -69,55 +72,57 @@ fun Application.configureRouting() {
     }
 
     routing {
-        openAPI(path="openapi")
-        route("/api/v1/clubs") {
-            post("/create") {
-                val request = call.receive<ClubCreateRequest>()
-                val payload = DataPayload.build("create") {
-                    param("name", request.name)
-                    param("description", request.description)
-                    param("ownerId", request.ownerId)
+        authenticate("auth-jwt"){
+            openAPI(path="openapi")
+            route("/api/v1/clubs") {
+                post("/create") {
+                    val request = call.receive<ClubCreateRequest>()
+                    val payload = DataPayload.build("create") {
+                        param("name", request.name)
+                        param("description", request.description)
+                        param("ownerId", request.ownerId)
+                    }
+                    
+                    processClubRequest(payload, call, producer, responses, mutex, json)
                 }
-                
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
 
-            get("/list") {     
-                val limit = call.parameters["limit"] ?: "10"
-                val offset = call.parameters["offset"] ?: "0"
-                val payload = DataPayload.build("listClubs") {
-                    param("limit", limit.toInt())
-                    param("offset", offset.toInt())
+                get("/list") {     
+                    val limit = call.parameters["limit"] ?: "10"
+                    val offset = call.parameters["offset"] ?: "0"
+                    val payload = DataPayload.build("listClubs") {
+                        param("limit", limit.toInt())
+                        param("offset", offset.toInt())
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
                 }
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
 
-            post("/{clubId}/members") {
-                val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
-                val request = call.receive<ClubMemberRequest>()
-                val payload = DataPayload.build("addMember") {
-                    param("clubId", clubId)
-                    param("userId", request.userId)
+                post("/{clubId}/members") {
+                    val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
+                    val request = call.receive<ClubMemberRequest>()
+                    val payload = DataPayload.build("addMember") {
+                        param("clubId", clubId)
+                        param("userId", request.userId)
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
                 }
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
 
-            delete("/{clubId}/members/{userId}") {
-                val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
-                val userId = call.parameters["userId"] ?: throw IllegalArgumentException("Missing user ID")
-                val payload = DataPayload.build("removeMember") {
-                    param("clubId", clubId)
-                    param("userId", userId)
+                delete("/{clubId}/members/{userId}") {
+                    val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
+                    val userId = call.parameters["userId"] ?: throw IllegalArgumentException("Missing user ID")
+                    val payload = DataPayload.build("removeMember") {
+                        param("clubId", clubId)
+                        param("userId", userId)
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
                 }
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
 
-            get("/{clubId}") {
-                val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
-                val payload = DataPayload.build("getInfo") {
-                    param("clubId", clubId)
+                get("/{clubId}") {
+                    val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
+                    val payload = DataPayload.build("getInfo") {
+                        param("clubId", clubId)
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
                 }
-                processClubRequest(payload, call, producer, responses, mutex, json)
             }
         }
     }
@@ -176,7 +181,7 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
             )
         )
 
-        "clubsList" -> {
+        "clubsListed" -> {
             val clubs = response.getParam<List<Club>>("clubs") ?: emptyList()
             call.respond(
                 HttpStatusCode.OK,
@@ -194,13 +199,6 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
         )
 
         "clubInfo" -> {
-            // val club = Club(
-            //     response.getParam("id") ?: "",
-            //     response.getParam("name") ?: "",
-            //     response.getParam("description") ?: "",
-            //     response.getParam("ownerId") ?: "",
-            //     response.getParam<MutableSet<String>>("members") ?: mutableSetOf()
-            // )
             val club = response.getParam<Club>("club")
             call.respond(
                 HttpStatusCode.OK,

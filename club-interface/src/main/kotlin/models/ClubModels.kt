@@ -31,25 +31,3 @@ data class ClubMember @OptIn(ExperimentalTime::class) constructor(
     val joinedAt: Instant,
 )
 
-/**
- * Club Response DTO with member information
- */
-@Serializable
-data class ClubResponse @OptIn(ExperimentalTime::class) constructor(
-    @SerialName("club_id") val clubId: Int,
-    val name: String,
-    val description: String,
-    @SerialName("owner_id") val ownerId: Int,
-    @SerialName("created_at")
-    @Serializable(with = InstantSerializer::class)
-    val createdAt: Instant,
-    val members: List<ClubMember> = emptyList()
-)
-
-@Serializable
-data class ClubListResponse(
-    val clubs: List<ClubResponse>,
-    val total: Int,
-    val offset: Int,
-    val limit: Int
-)
