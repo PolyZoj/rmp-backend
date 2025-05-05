@@ -34,6 +34,7 @@ import common.kafka.createKafkaProducer
 import io.ktor.server.auth.authenticate
 import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.principal
+import com.auth0.jwt.interfaces.Claim
 
 fun Application.configureRouting() {
     val json = Json { ignoreUnknownKeys = true }
@@ -71,16 +72,29 @@ fun Application.configureRouting() {
         }
     }
 
+    fun verifyJWTandGetUserId(call: ApplicationCall): String? {
+        val principal = call.principal<JWTPrincipal>()
+            ?: return null
+
+        val userIdClaim: Claim = principal.payload.getClaim("userId")
+        return userIdClaim.asString()
+    }
+
     routing {
         authenticate("auth-jwt"){
             openAPI(path="openapi")
             route("/api/v1/clubs") {
                 post("/create") {
                     val request = call.receive<ClubCreateRequest>()
+                    val userId = verifyJWTandGetUserId(call)
+                    if (userId == null) {
+                        call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        return@post
+                    }
                     val payload = DataPayload.build("create") {
                         param("name", request.name)
                         param("description", request.description)
-                        param("ownerId", request.ownerId)
+                        param("ownerId", userId)
                     }
                     
                     processClubRequest(payload, call, producer, responses, mutex, json)

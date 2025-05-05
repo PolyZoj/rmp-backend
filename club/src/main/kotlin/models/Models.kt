@@ -14,7 +14,7 @@ data class Club(
 
 
 @Serializable
-data class ClubCreateRequest(val name: String, val description: String, val ownerId: String)
+data class ClubCreateRequest(val name: String, val description: String)
 
 @Serializable
 data class ClubMemberRequest(val userId: String)
