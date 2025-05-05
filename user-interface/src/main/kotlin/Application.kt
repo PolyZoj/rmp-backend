@@ -112,8 +112,8 @@ fun Application.module() {
         return friendsInfo
     }
 
-    suspend fun findFriendHelper(userId: Int, searchString: String): List<UserBasicInfo> {
-        val friendsIds = userRepository.getFriends(userId)
+    suspend fun findFriendHelper(searchString: String): List<UserBasicInfo> {
+        val friendsIds = userRepository.getAllIds()
         val friendsMatchedSubstring = userRepository.findUserIdsByUsernameSubstring(friendsIds, searchString)
         val friendsInfo = userRepository.getUsersBasicInfo(friendsMatchedSubstring)
         return friendsInfo
@@ -437,7 +437,7 @@ fun Application.module() {
                     )
                     producerService.send("user-responses", conversationId, err)
                 } else {
-                    val friendsInfo = findFriendHelper(userId.toInt(), searchString)
+                    val friendsInfo = findFriendHelper(searchString)
                     val resp = DataPayload.build(userId) {
                         param("possible-friend", friendsInfo)
                     }

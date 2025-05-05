@@ -612,4 +612,20 @@ class UserRepository {
         }
     }
 
+    suspend fun getAllIds(): List<Int> {
+        log.debug("Fetching all user IDs")
+        return try {
+            DatabaseFactory.read {
+                UsersTable
+                    .selectAll()
+                    .map { it[UsersTable.id].value }
+            }
+        } catch (e: Exception) {
+            log.error("Error fetching all user IDs", e)
+            emptyList()
+        }.also { list ->
+            log.info("Fetched {} user IDs", list.size)
+        }
+    }
+
 }
