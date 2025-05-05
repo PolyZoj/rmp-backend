@@ -253,7 +253,8 @@ fun Application.module() {
                         sleepGoal = data.getParam<Float>("sleep_goal"),
                         workoutsGoal = data.getParam<Short>("workouts_goal"),
                     )
-                } catch (e: IllegalArgumentException) {
+                } catch (e: Exception) {
+                    log.warn("Error registering user: $e")
                     val msg = DataPayload.error(
                         status = HttpStatusCode.BadRequest,
                         description = e.message ?: "Invalid registration data"
