@@ -7,17 +7,16 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 /**
- * Basic Club model (DB table "clubs")
+ * Basic Club model
  */
+
 @Serializable
-data class Club @OptIn(ExperimentalTime::class) constructor(
-    @SerialName("club_id") val clubId: Int,
+data class Club(
+    val id: String,
     val name: String,
     val description: String,
-    @SerialName("owner_id") val ownerId: Int,
-    @SerialName("created_at")
-    @Serializable(with = InstantSerializer::class)
-    val createdAt: Instant
+    val ownerId: String,
+    val members: MutableSet<String> = mutableSetOf(),
 )
 
 /**
@@ -30,23 +29,6 @@ data class ClubMember @OptIn(ExperimentalTime::class) constructor(
     @SerialName("joined_at")
     @Serializable(with = InstantSerializer::class)
     val joinedAt: Instant,
-)
-
-/**
- * Club Update Request DTO
- */
-@Serializable
-data class ClubUpdateRequest(
-    val name: String? = null,
-    val description: String? = null
-)
-
-/**
- * Club Member Request DTO
- */
-@Serializable
-data class ClubMemberAddRequest(
-    @SerialName("user_id") val userId: Int,
 )
 
 /**
@@ -64,12 +46,9 @@ data class ClubResponse @OptIn(ExperimentalTime::class) constructor(
     val members: List<ClubMember> = emptyList()
 )
 
-/**
- * Club List Response DTO
- */
 @Serializable
 data class ClubListResponse(
-    val clubs: List<Club>,
+    val clubs: List<ClubResponse>,
     val total: Int,
     val offset: Int,
     val limit: Int

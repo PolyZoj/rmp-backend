@@ -188,19 +188,20 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
             HttpStatusCode.OK,
             ClubMemberResponse(
                 response.message,
-                response.getParam("userId") ?: "",
-                response.getParam("clubId") ?: ""
+                response.getParam<String>("userId") ?: "",
+                response.getParam<String>("clubId") ?: ""
             )
         )
 
         "clubInfo" -> {
-            val club = Club(
-                response.getParam("id") ?: "",
-                response.getParam("name") ?: "",
-                response.getParam("description") ?: "",
-                response.getParam("ownerId") ?: "",
-                response.getParam<MutableSet<String>>("members") ?: mutableSetOf()
-            )
+            // val club = Club(
+            //     response.getParam("id") ?: "",
+            //     response.getParam("name") ?: "",
+            //     response.getParam("description") ?: "",
+            //     response.getParam("ownerId") ?: "",
+            //     response.getParam<MutableSet<String>>("members") ?: mutableSetOf()
+            // )
+            val club = response.getParam<Club>("club")
             call.respond(
                 HttpStatusCode.OK,
                 ClubInfoResponse(club)

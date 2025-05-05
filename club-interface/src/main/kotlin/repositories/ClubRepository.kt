@@ -18,6 +18,7 @@ import ru.polyZoj.models.*
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaInstant
+import kotlin.time.toKotlinInstant
 
 class ClubRepository {
     private val log = logger<ClubRepository>()
@@ -49,105 +50,69 @@ class ClubRepository {
         }
     }
 
-    // /** Get club by ID with its members */
-    // @OptIn(ExperimentalTime::class)
-    // fun getClub(clubId: Int): ClubResponse? {
-    //     log.info("Fetching club with clubId={}", clubId)
-    //     return DatabaseFactory.read {
-    //         val club = ClubsTable
-    //             .select { ClubsTable.id eq clubId }
-    //             .map { row ->
-    //                 Club(
-    //                     clubId = row[ClubsTable.id].value,
-    //                     name = row[ClubsTable.name],
-    //                     description = row[ClubsTable.description],
-    //                     ownerId = row[ClubsTable.ownerId],
-    //                     createdAt = row[ClubsTable.createdAt].toKotlinInstant()
-    //                 )
-    //             }
-    //             .singleOrNull() ?: return@read null
+    @OptIn(ExperimentalTime::class)
+    fun addMember(clubId: Int, userId: Int): Boolean {
+        log.info("Adding member userId={} to clubId={}", userId, clubId)
+        return try {
+            DatabaseFactory.write {
+                ClubMembersTable.insert {
+                    it[ClubMembersTable.clubId] = clubId
+                    it[ClubMembersTable.userId] = userId
+                    it[ClubMembersTable.joinedAt] = Clock.System.now().toJavaInstant()
+                }
+            }
+            log.info("Member added successfully: clubId={}, userId={}", clubId, userId)
+            true
+        } catch (e: Exception) {
+            log.error("Error adding member: clubId={}, userId={}, error={}", clubId, userId, e.message)
+            false
+        }
+    }
 
-    //         val members = ClubMembersTable
-    //             .select { ClubMembersTable.clubId eq clubId }
-    //             .map { row ->
-    //                 ClubMember(
-    //                     clubId = row[ClubMembersTable.clubId],
-    //                     userId = row[ClubMembersTable.userId],
-    //                     joinedAt = row[ClubMembersTable.joinedAt].toKotlinInstant(),
-    //                 )
-    //             }
+    @OptIn(ExperimentalTime::class)
+    fun removeMember(clubId: Int, userId: Int): Boolean {
+        log.info("Removing member userId={} from clubId={}", userId, clubId)
+        return try {
+            DatabaseFactory.write {
+                val deleted = ClubMembersTable.deleteWhere { 
+                    (ClubMembersTable.clubId eq clubId) and (ClubMembersTable.userId eq userId)
+                }
+                deleted > 0
+            }.also { success ->
+                if (success) log.info("Member removed successfully: clubId={}, userId={}", clubId, userId)
+                else log.warn("Failed to remove member: clubId={}, userId={}", clubId, userId)
+            }
+        } catch (e: Exception) {
+            log.error("Error removing member: clubId={}, userId={}, error={}", clubId, userId, e.message)
+            false
+        }
+    }
+    @OptIn(ExperimentalTime::class)
+    fun getClub(clubId: Int): Club? {
+        log.info("Fetching club with clubId={}", clubId)
+        return DatabaseFactory.read {
+            val clubRow = ClubsTable
+                .selectAll()
+                .where { ClubsTable.id eq clubId }
+                .singleOrNull() ?: return@read null
 
-    //         ClubResponse(
-    //             clubId = club.clubId,
-    //             name = club.name,
-    //             description = club.description,
-    //             ownerId = club.ownerId,
-    //             createdAt = club.createdAt,
-    //             members = members
-    //         )
-    //     }.also {
-    //         if (it != null) log.info("Club found with clubId={}", clubId)
-    //         else log.info("No club found with clubId={}", clubId)
-    //     }
-    // }
+            val members = ClubMembersTable
+                .selectAll()
+                .where { ClubMembersTable.clubId eq clubId }
+                .map { it[ClubMembersTable.userId].toString() }
+                .toMutableSet()
 
-    // /** Get list of clubs with pagination */
-    // fun getClubs(limit: Int, offset: Int): ClubListResponse {
-    //     log.info("Fetching clubs with limit={}, offset={}", limit, offset)
-    //     return DatabaseFactory.read {
-    //         val total = ClubsTable.selectAll().count()
-    //         val clubs = ClubsTable
-    //             .selectAll()
-    //             .limit(limit, offset.toLong())
-    //             .map { row ->
-    //                 Club(
-    //                     clubId = row[ClubsTable.id].value,
-    //                     name = row[ClubsTable.name],
-    //                     description = row[ClubsTable.description],
-    //                     ownerId = row[ClubsTable.ownerId],
-    //                     createdAt = row[ClubsTable.createdAt].toKotlinInstant()
-    //                 )
-    //             }
-    //         ClubListResponse(
-    //             clubs = clubs,
-    //             total = total.toInt(),
-    //             offset = offset,
-    //             limit = limit
-    //         )
-    //     }
-    // }
+            Club(
+                id = clubRow[ClubsTable.id].value.toString(),
+                name = clubRow[ClubsTable.name],
+                description = clubRow[ClubsTable.description],
+                ownerId = clubRow[ClubsTable.ownerId].toString(),
+                members = members
+            )
+        }.also {
+            if (it != null) log.info("Club found with clubId={}", clubId)
+            else log.info("No club found with clubId={}", clubId)
+        }
+    }
 
-    // /** Add a member to a club */
-    // @OptIn(ExperimentalTime::class)
-    // fun addMember(clubId: Int, request: ClubMemberAddRequest): Boolean {
-    //     log.info("Adding member userId={} to clubId={}", request.userId, clubId)
-    //     return try {
-    //         DatabaseFactory.write {
-    //             ClubMembersTable.insert {
-    //                 it[ClubMembersTable.clubId] = clubId
-    //                 it[ClubMembersTable.userId] = request.userId
-    //                 it[ClubMembersTable.joinedAt] = Clock.System.now().toJavaInstant()
-    //             }
-    //         }
-    //         log.info("Member added successfully: clubId={}, userId={}", clubId, request.userId)
-    //         true
-    //     } catch (e: Exception) {
-    //         log.error("Error adding member: clubId={}, userId={}, error={}", clubId, request.userId, e.message)
-    //         false
-    //     }
-    // }
-
-    // /** Remove a member from a club */
-    // fun removeMember(clubId: Int, userId: Int): Boolean {
-    //     log.info("Removing member userId={} from clubId={}", userId, clubId)
-    //     return DatabaseFactory.write {
-    //         val deleted = ClubMembersTable.deleteWhere { 
-    //             (ClubMembersTable.clubId eq clubId) and (ClubMembersTable.userId eq userId)
-    //         }
-    //         deleted > 0
-    //     }.also { success ->
-    //         if (success) log.info("Member removed successfully: clubId={}, userId={}", clubId, userId)
-    //         else log.warn("Failed to remove member: clubId={}, userId={}", clubId, userId)
-    //     }
-    // }
 }

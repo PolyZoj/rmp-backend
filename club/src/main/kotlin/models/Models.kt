@@ -27,7 +27,7 @@ data class ClubMemberResponse(val message: String,val userId: String, val clubId
 
 @Serializable
 data class ClubInfoResponse(
-    val club: Club
+    val club: Club?
 )
 
 

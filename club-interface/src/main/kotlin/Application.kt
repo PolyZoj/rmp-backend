@@ -52,7 +52,7 @@ fun Application.module() {
     consumerService.startConsuming { conversationId, data ->
         log.info("Received message: $data")
         val command = data.message
-        when (command) {
+        when (command.lowercase()) {
             "create" -> {
                 log.info("Club create command received, data: $data")
                 val ownerId = data.getParam<String>("ownerId")
@@ -81,21 +81,87 @@ fun Application.module() {
                     producerService.send("club-responses", conversationId, response)
                 }
             }
-
             "listclubs" -> {
-                //TODO
             }
 
             "addmember" -> {
-                //TODO
+                log.info("Add member command received, data: $data")
+                val clubId = data.getParam<Int>("clubId")
+                val userId = data.getParam<Int>("userId")
+                if (clubId == null || userId == null) {
+                    val response = DataPayload.error(
+                        HttpStatusCode.BadRequest,
+                        description = "Missing clubId or userId"
+                    )
+                    producerService.send("club-responses", conversationId, response)
+                } else {
+                    val success = clubRepository.addMember(clubId, userId)
+                    val response = if (success) {
+                        DataPayload.build("memberAdded") {
+                            param("userId", userId.toString())
+                            param("clubId", clubId.toString())
+                        }
+                    } else {
+                        DataPayload.error(
+                            HttpStatusCode.InternalServerError,
+                            description = "Failed to add member"
+                        )
+                    }
+                    producerService.send("club-responses", conversationId, response)
+                }
             }
 
+
             "removemember" -> {
-                //TODO
+                log.info("Remove member command received, data: $data")
+                val clubId = data.getParam<Int>("clubId")
+                val userId = data.getParam<Int>("userId")
+                if (clubId == null || userId == null) {
+                    val response = DataPayload.error(
+                        HttpStatusCode.BadRequest,
+                        description = "Missing clubId or userId"
+                    )
+                    producerService.send("club-responses", conversationId, response)
+                } else {
+                    val success = clubRepository.removeMember(clubId, userId)
+                    val response = if (success) {
+                        DataPayload.build("memberRemoved") {
+                            param("userId", userId.toString())
+                            param("clubId", clubId.toString())
+                        }
+                    } else {
+                        DataPayload.error(
+                            HttpStatusCode.InternalServerError,
+                            description = "Failed to remove member"
+                        )
+                    }
+                    producerService.send("club-responses", conversationId, response)
+                }
             }
 
             "getinfo" -> {
-                //TODO
+                log.info("Get club info command received, data: $data")
+                val clubId = data.getParam<String>("clubId")
+                if (clubId == null) {
+                    val response = DataPayload.error(
+                        HttpStatusCode.BadRequest,
+                        description = "Missing clubId"
+                    )
+                    producerService.send("club-responses", conversationId, response)
+                } else {
+                    val club = clubRepository.getClub(clubId.toInt())
+                    val response = if (club != null) {
+                        DataPayload.build("clubInfo") {
+                            param("club", club)
+                        }
+                    } else {
+                        DataPayload.error(
+                            HttpStatusCode.NotFound,
+                            description = "Club not found"
+                        )
+                    }
+                    producerService.send("club-responses", conversationId, response)
+                }
             }
 
             else -> {

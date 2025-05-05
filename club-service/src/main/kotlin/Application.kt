@@ -126,6 +126,37 @@ private fun handleKafkaInterfaceMessage(
                     param("clubId", payload.getParam<String>("clubId").orEmpty())
                 })
             }
+            "clubslist" -> {
+                producer.send("club-gateway-responses"
+                ,conversationId
+                ,DataPayload.build("clubslist") {
+                    param("clubs", payload.getParam<List<Club>>("clubs").orEmpty())
+                })
+            }
+            "memberadded" -> {
+                producer.send("club-gateway-responses"
+               ,conversationId
+               ,DataPayload.build("memberAdded") {
+                    param("userId", payload.getParam<String>("userId").orEmpty())
+                    param("clubId", payload.getParam<String>("clubId").orEmpty())
+                })
+            }
+            "memberremoved" -> {
+                producer.send("club-gateway-responses"
+               ,conversationId
+               ,DataPayload.build("memberRemoved") {
+                    param("userId", payload.getParam<String>("userId").orEmpty())
+                    param("clubId", payload.getParam<String>("clubId").orEmpty())
+                })
+            }
+            "clubinfo" -> {
+                producer.send("club-gateway-responses"
+               ,conversationId
+               ,DataPayload.build("clubInfo") {
+                    param("club", payload.getParam<Club>("club"))
+                })
+            }
+
 
             else -> sendError(conversationId, "Invalid message", producer)
         }
@@ -161,15 +192,15 @@ private fun handleListClubs(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    val limit = payload.getParam<Int>("limit") ?: 10
-    val offset = payload.getParam<Int>("offset") ?: 0
+    // val limit = payload.getParam<Int>("limit") ?: 10
+    // val offset = payload.getParam<Int>("offset") ?: 0
 
-    val clubs = ClubDataSource.getClubs(limit, offset)
+    // val clubs = ClubDataSource.getClubs(limit, offset)
     
-    val response = DataPayload.build("clubsList") {
-        param("clubs", clubs)
-    }
-    producer.send("club-gateway-responses", conversationId, response)
+    // val response = DataPayload.build("clubsList") {
+    //     param("clubs", clubs)
+    // }
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleAddMember(
@@ -185,16 +216,7 @@ private fun handleAddMember(
         return
     }
     
-    when (ClubDataSource.addMember(clubId, userId)) {
-        true -> {
-            val response = DataPayload.build("memberAdded") {
-                param("userId", userId)
-                param("clubId", clubId)
-            }
-            producer.send("club-gateway-responses", conversationId, response)
-        }
-        false -> sendError(conversationId, "Club not found or user already member", producer)
-    }
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleRemoveMember(
@@ -210,16 +232,7 @@ private fun handleRemoveMember(
         return
     }
     
-    when (ClubDataSource.removeMember(clubId, userId)) {
-        true -> {
-            val response = DataPayload.build("memberRemoved") {
-                param("userId", userId)
-                param("clubId", clubId)
-            }
-            producer.send("club-gateway-responses", conversationId, response)
-        }
-        false -> sendError(conversationId, "Club not found or user not member", producer)
-    }
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleGetInfo(
@@ -228,21 +241,14 @@ private fun handleGetInfo(
     producer: KafkaProducerService
 ) {
     val clubId = payload.getParam<String>("clubId").orEmpty()
-    val club = ClubDataSource.getClub(clubId)
     
-    if (club != null) {
-        val response = DataPayload.build("clubInfo") {
-            param("id", club.id)
-            param("name", club.name)
-            param("description", club.description)
-            param("ownerId", club.ownerId)
-            param("members", club.members)
-        }
-        producer.send("club-gateway-responses", conversationId, response)
-    } else {
-        sendError(conversationId, "Club not found", producer)
+    if (clubId.isBlank()) {
+        sendError(conversationId, "Missing club ID", producer)
+        return
     }
+    producer.send("club-requests", conversationId, payload)
 }
+    
 
 // TODO: Изменить чтобы использовал DataPayload.error с кодом ошибки
 private fun sendError(conversationId: String, message: String, producer: KafkaProducerService) {
