@@ -21,28 +21,34 @@ repositories {
 
 dependencies {
     implementation("ru.polyZoj:common")
-    implementation(libs.ktor.simple.cache)
     implementation(libs.ktor.server.core)
-    implementation(libs.ktor.simple.redis.cache)
-    implementation(libs.ktor.server.cors)
-    implementation(libs.ktor.server.auth)
-    implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.netty)
-    implementation(libs.logback.classic)
     implementation(libs.ktor.server.config.yaml)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.ktor.server.content.negotiation)
+    implementation(libs.kafka.clients)
+    implementation(libs.postgresql)
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.dao)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.java.time)
+    implementation(libs.auth0.java.jwt)
+    implementation(libs.hikaricp)
+    implementation(libs.flyway.core)
+    implementation(libs.flyway.database.postgresql)
+    implementation(libs.jakarta.annotation.api)
+    implementation(libs.koin.ktor)
+    implementation(libs.koin.logger.slf4j)
+    implementation(libs.bcrypt)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.logback.classic)
+    implementation(libs.logstash.logback.encoder)
+
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.4.0")
-    implementation("io.lettuce:lettuce-core:6.2.3.RELEASE")
-    implementation("io.ktor:ktor-server-content-negotiation:3.1.1")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
-    implementation("io.ktor:ktor-client-core:2.3.2")
-    implementation("io.ktor:ktor-client-cio:2.3.2") 
-    implementation("org.apache.kafka:kafka-clients:3.5.1")
-
-    implementation("io.ktor:ktor-server-openapi:3.1.1")
 }
+
 tasks.register("downloadDependencies") {
     doLast {
         configurations
@@ -52,4 +58,3 @@ tasks.register("downloadDependencies") {
             }
     }
 }
-

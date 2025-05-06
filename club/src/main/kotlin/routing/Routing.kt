@@ -1,4 +1,4 @@
-package ru.polyZog.routing
+package ru.polyZoj.routing
 
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -10,8 +10,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import org.apache.kafka.clients.consumer.KafkaConsumer
-import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.NewTopic
@@ -19,37 +17,55 @@ import org.apache.kafka.common.errors.TopicExistsException
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
-import ru.polyZog.models.ClubCreateRequest
-import ru.polyZog.models.ClubMemberRequest
-import ru.polyZog.models.Club
-import ru.polyZog.models.DataPayload
-import ru.polyZog.models.ClubInfoResponse
-import ru.polyZog.models.ClubCreateResponse
-import ru.polyZog.models.ClubMemberResponse
+import ru.polyZoj.models.ClubCreateRequest
+import ru.polyZoj.models.ClubMemberRequest
+import ru.polyZoj.models.Club
+import ru.polyZoj.models.ClubInfoResponse
+import ru.polyZoj.models.ClubCreateResponse
+import ru.polyZoj.models.ClubMemberResponse
 import io.ktor.server.plugins.openapi.*
-
+import org.apache.kafka.clients.producer.KafkaProducer
+import common.DataPayload
+import common.kafka.KafkaConfig
+import common.kafka.KafkaProducerService
+import common.kafka.RequestProcessor
+import common.kafka.createKafkaConsumer
+import common.kafka.createKafkaProducer
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.principal
+import com.auth0.jwt.interfaces.Claim
 
 fun Application.configureRouting() {
     val json = Json { ignoreUnknownKeys = true }
-    val producer = KafkaProducer<String, String>(producerConfig())
-    val consumer = KafkaConsumer<String, String>(consumerConfig("club-gateway-consumer"))
+
+    val kafkaConfig = KafkaConfig()
+    kafkaConfig.createTopicIfNotExists("club-gateway-requests", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("club-gateway-responses", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("club-user-bridge", 1, 3.toShort())
+
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
     
-    createClubKafkaTopics()
+    val kafkaProducer = createKafkaProducer()
+    val producer = KafkaProducerService(kafkaProducer)
 
+    val consumer = createKafkaConsumer("club-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("club-responses"))
+        consumer.subscribe(listOf("club-gateway-responses"))
         while (true) {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
                 mutex.withLock {
                     try {
-                        val response = json.decodeFromString<DataPayload>(record.value())
+                        val response = record.value()
                         responses[record.key()]?.complete(response)
                     } catch (e: Exception) {
                         responses[record.key()]?.complete(
-                            DataPayload("error", params = listOf("Processing error"))
+                            DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Processing error"
+                            )
                         )
                     }
                 }
@@ -57,67 +73,80 @@ fun Application.configureRouting() {
         }
     }
 
+    fun verifyJWTandGetUserId(call: ApplicationCall): String? {
+        val principal = call.principal<JWTPrincipal>()
+            ?: return null
+
+        val userIdClaim: Claim = principal.payload.getClaim("userId")
+        return userIdClaim.asString()
+    }
+
     routing {
-        openAPI(path="openapi")
-        route("/api/v1/clubs") {
-            post("/create") {
-                val request = call.receive<ClubCreateRequest>()
-                val payload = DataPayload(
-                    message = "create",
-                    params = listOf(request.name, request.description, request.ownerId)
-                )
-                
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
+        authenticate("auth-jwt"){
+            openAPI(path="openapi")
+            route("/api/v1/clubs") {
+                post("/create") {
+                    val request = call.receive<ClubCreateRequest>()
+                    val userId = verifyJWTandGetUserId(call)
+                    if (userId == null) {
+                        call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        return@post
+                    }
+                    val payload = DataPayload.build("create") {
+                        param("name", request.name)
+                        param("description", request.description)
+                        param("ownerId", userId)
+                    }
+                    
+                    processClubRequest(payload, call, producer, responses, mutex, json)
+                }
 
-            get("/list") {     
-                val limit = call.parameters["limit"] ?: throw IllegalArgumentException("Missing limit")
-                val offset = call.parameters["offset"] ?: throw IllegalArgumentException("Missing offset")
-                val payload = DataPayload(
-                    message = "listClubs",
-                    params = listOf(limit.toString(), offset.toString())
-                )
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
+                get("/list") {     
+                    val limit = call.parameters["limit"] ?: "10"
+                    val offset = call.parameters["offset"] ?: "0"
+                    val payload = DataPayload.build("listClubs") {
+                        param("limit", limit.toInt())
+                        param("offset", offset.toInt())
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
+                }
 
-            post("/{clubId}/members") {
-                val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
-                val request = call.receive<ClubMemberRequest>()
-                val payload = DataPayload(
-                    message = "addMember",
-                    params = listOf(clubId, request.userId)
-                )
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
+                post("/{clubId}/members") {
+                    val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
+                    val request = call.receive<ClubMemberRequest>()
+                    val payload = DataPayload.build("addMember") {
+                        param("clubId", clubId)
+                        param("userId", request.userId)
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
+                }
 
-            delete("/{clubId}/members/{userId}") {
-                val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
-                val userId = call.parameters["userId"] ?: throw IllegalArgumentException("Missing user ID")
-                val payload = DataPayload(
-                    message = "removeMember",
-                    params = listOf(clubId, userId)
-                )
-                processClubRequest(payload, call, producer, responses, mutex, json)
-            }
+                delete("/{clubId}/members/{userId}") {
+                    val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
+                    val userId = call.parameters["userId"] ?: throw IllegalArgumentException("Missing user ID")
+                    val payload = DataPayload.build("removeMember") {
+                        param("clubId", clubId)
+                        param("userId", userId)
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
+                }
 
-            get("/{clubId}") {
-                val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
-                val payload = DataPayload(
-                    message = "getInfo",
-                    params = listOf(clubId)
-                )
-                processClubRequest(payload, call, producer, responses, mutex, json)
+                get("/{clubId}") {
+                    val clubId = call.parameters["clubId"] ?: throw IllegalArgumentException("Missing club ID")
+                    val payload = DataPayload.build("getInfo") {
+                        param("clubId", clubId)
+                    }
+                    processClubRequest(payload, call, producer, responses, mutex, json)
+                }
             }
         }
     }
 }
 
-
-
 private suspend fun processClubRequest(
     payload: DataPayload,
     call: ApplicationCall,
-    producer: KafkaProducer<String, String>,
+    producer: KafkaProducerService,
     responses: ConcurrentHashMap<String, CompletableDeferred<DataPayload>>,
     mutex: Mutex,
     json: Json
@@ -128,11 +157,11 @@ private suspend fun processClubRequest(
     mutex.withLock {
         responses[correlationId] = responseDeferred
     }
-    producer.send(ProducerRecord(
-        "club-requests",
+    producer.send(
+        "club-gateway-requests",
         correlationId,
-        json.encodeToString(payload)
-    ))
+        payload
+    )
     try {
         val result = withTimeoutOrNull(5000) { responseDeferred.await() }
 
@@ -142,10 +171,14 @@ private suspend fun processClubRequest(
                 mapOf("error" to "Club service timeout")
             )
 
-            result.message == "error" -> call.respond(
-                HttpStatusCode.BadRequest,
-                mapOf<String, String>("error" to (result.params.firstOrNull() ?: "Unknown error"))
-            )
+            result.message == "error" -> {
+                val status = result.getParam<Int>("status") ?: 400
+                val description = result.getParam<String>("description") ?: "Unknown error"
+                call.respond(
+                    HttpStatusCode.fromValue(status),
+                    mapOf("error" to description)
+                )
+            }
 
             else -> handleClubResponse(result, call, json)
         }
@@ -159,41 +192,34 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
         "created" -> call.respond(
             HttpStatusCode.Created,
             ClubCreateResponse(
-                response.params.get(0),
-                response.params.get(1)
+                response.getParam<String>("clubId").orEmpty()
             )
         )
 
-        "clubsList" ->{
-        val clubsJson = response.params.getOrNull(0) ?: "[]"
-        val clubs = json.decodeFromString<List<Club>>(clubsJson)
-        call.respond(
-            HttpStatusCode.OK,
-            mapOf("data" to clubs)  
-        )}
+        "clubsListed" -> {
+            val clubs = response.getParam<List<Club>>("clubs") ?: emptyList()
+            call.respond(
+                HttpStatusCode.OK,
+                mapOf("data" to clubs)
+            )
+        }
 
         "memberAdded", "memberRemoved" -> call.respond(
             HttpStatusCode.OK,
-
             ClubMemberResponse(
                 response.message,
-                response.params.get(0),
-                response.params.get(1)
+                response.getParam<String>("userId") ?: "",
+                response.getParam<String>("clubId") ?: ""
             )
         )
 
-        "clubInfo" -> call.respond(
-            HttpStatusCode.OK,
-            ClubInfoResponse(
-                Club(
-                    response.params.get(0),
-                    response.params.get(1),
-                    response.params.get(2),
-                    response.params.get(3),
-                    json.decodeFromString<MutableSet<String>>(response.params.get(4))
-                )
+        "clubInfo" -> {
+            val club = response.getParam<Club>("club")
+            call.respond(
+                HttpStatusCode.OK,
+                ClubInfoResponse(club)
             )
-        )
+        }
 
         else -> call.respond(
             HttpStatusCode.InternalServerError,
@@ -202,63 +228,3 @@ private suspend fun handleClubResponse(response: DataPayload, call: ApplicationC
     }
 }
 
-private fun Application.createClubKafkaTopics() {
-    val adminProps = Properties().apply {
-        put("bootstrap.servers", "kafka:9092")
-        put("client.id", "club-gateway-admin")
-    }
-
-    AdminClient.create(adminProps).use { admin ->
-        val topics = listOf(
-            NewTopic("club-requests", 1, 3.toShort())
-                .configs(mapOf("min.insync.replicas" to "2")),
-            NewTopic("club-responses", 1, 3.toShort())
-                .configs(mapOf("min.insync.replicas" to "2"))
-        )
-
-        try {
-            admin.createTopics(topics).all().get()
-            println("Club Kafka topics created")
-        } catch (e: ExecutionException) {
-            if (e.cause !is TopicExistsException) {
-                println("Failed to create club topics: ${e.message}")
-            }
-        }
-    }
-}
-
-fun producerConfig(): Properties {
-    return Properties().apply {
-        put("bootstrap.servers", "kafka:9092")
-        put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
-        put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
-
-        put("acks", "all")
-        put("enable.idempotence", "true")
-        put("max.in.flight.requests.per.connection", "1")
-
-        put("retries", "5")
-        put("linger.ms", "1")
-        put("delivery.timeout.ms", "120000")
-    }
-}
-
-fun consumerConfig(groupId: String): Properties {
-    return Properties().apply {
-        put("bootstrap.servers", "kafka:9092")
-        put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
-        put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer")
-
-        put("group.id", groupId)
-        put("auto.offset.reset", "earliest")
-        put("enable.auto.commit", "false")
-
-        put("isolation.level", "read_committed")
-        put("max.poll.records", "50")
-
-        put("session.timeout.ms", "15000")
-        put("heartbeat.interval.ms", "5000")
-        put("max.poll.interval.ms", "300000")
-
-    }
-}

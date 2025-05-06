@@ -17,7 +17,7 @@ data class User @OptIn(ExperimentalTime::class) constructor(
     @SerialName("email") val email: String,
     @SerialName("avatar_url") val avatarUrl: String?,
     @SerialName("is_admin") val isAdmin: Boolean = false,
-    @SerialName("club_id") val clubId: Int? = null,
+    @SerialName("club_id") val clubId: Int? = 0,
     @SerialName("created_at") @Serializable(with = InstantSerializer::class) val createdAt: Instant? = null
 )
 
