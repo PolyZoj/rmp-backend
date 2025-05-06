@@ -4,7 +4,6 @@ import io.ktor.server.application.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.server.config.ApplicationConfig
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 import common.kafka.KafkaConsumerService
@@ -15,41 +14,21 @@ import common.DataPayload
 import ru.polyZoj.models.User
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import common.exceptions.ArgumentNotFoundException
 import common.kafka.KafkaConfig
 import common.models.EnergySystem
+import common.models.FriendshipStatusFrontEnd
 import common.models.UnitSystem
 import common.models.UserBasicInfo
-import common.models.UserDTO
 import common.models.UserRegistration
 import common.models.UserUpdatable
 import io.ktor.http.HttpStatusCode
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import ru.polyZoj.configs.JwtConfig
+import ru.polyZoj.configs.generateToken
 import java.time.LocalDate
-import java.util.Date
 import java.util.concurrent.TimeUnit
-
-data class JwtConfig(
-    val secret: String,
-    val domain: String,
-    val audience: String,
-    val realm: String,
-    val expiresIn: Long = 3_600_000
-) {
-    companion object {
-        fun fromConfig(config: ApplicationConfig): JwtConfig {
-            return JwtConfig(
-                secret = config.property("jwt.secret").getString(),
-                domain = config.property("jwt.domain").getString(),
-                audience = config.property("jwt.audience").getString(),
-                realm = config.property("jwt.realm").getString()
-            )
-        }
-    }
-}
 
 val pendingResponses = ConcurrentHashMap<String, CompletableFuture<DataPayload>>()
 
@@ -274,7 +253,8 @@ fun Application.module() {
                         sleepGoal = data.getParam<Float>("sleep_goal"),
                         workoutsGoal = data.getParam<Short>("workouts_goal"),
                     )
-                } catch (e: IllegalArgumentException) {
+                } catch (e: Exception) {
+                    log.warn("Error registering user: $e")
                     val msg = DataPayload.error(
                         status = HttpStatusCode.BadRequest,
                         description = e.message ?: "Invalid registration data"
@@ -339,17 +319,20 @@ fun Application.module() {
         val command = data.message
         when (command) {
 
-            /** Needs userId, returns userDTO */
+            /** Needs userId and selfId, returns flattened userDTO + status */
             "userInfo" -> {
                 handleUserConsumerCommand(
                     data,
                     conversationId,
                     onSuccess = { response ->
-                        val userDTO = response.getParam<UserDTO>("user_dto")
-                            ?: throw IllegalArgumentException("user_dto not found in response")
-                        DataPayload.build("success") {
-                            param("user_dto", userDTO)
-                        }
+                        // only checking some params, they are a lot
+                        val userId = response.getParam<String>("user_id")
+                            ?: throw IllegalArgumentException("user_id not found in response")
+                        val username = response.getParam<String>("username")
+                            ?: throw IllegalArgumentException("username not found in response")
+                        val status = response.getParam<FriendshipStatusFrontEnd>("status")
+                            ?: throw IllegalArgumentException("status not found in response")
+                        response
                     },
                     errorStatusCode = HttpStatusCode.InternalServerError,
                     errorDescription = "Error retrieving user"
@@ -550,15 +533,63 @@ fun Application.module() {
             }
         }
     }
-}
 
-fun generateToken(user: User, config: JwtConfig): String {
-    return JWT.create()
-        .withSubject(user.id)
-        .withIssuer(config.domain)
-        .withAudience(config.audience)
-        .withClaim("username", user.username)
-        .withClaim("userId", user.id)
-        .withExpiresAt(Date(System.currentTimeMillis() + config.expiresIn))
-        .sign(Algorithm.HMAC256(config.secret))
+    val clubConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("club-gateway-requests"))
+    clubConsumer.startConsuming { conversationId, data ->
+        log.info("Received club request: $data")
+        val command = data.message
+        when (command) {
+            /** Needs userId and clubId, returns success */
+            "updateClubId" -> {
+                val userId = data.getParam<String>("user_id")
+                val clubId = data.getParam<String>("club_id")
+                if (userId == null || clubId == null) {
+                    producerService.send("club-gateway-responses", conversationId, DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Missing user_id or club_id"
+                    ))
+                    return@startConsuming
+                }
+
+                val requestPayload = DataPayload.build(command) {
+                    param("user_id", userId)
+                    param("club_id", clubId)
+                }
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
+
+                log.info("sending request to user-requests: $requestPayload")
+                producerService.send("user-requests", conversationId, requestPayload)
+
+                future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null || response.params.isEmpty() || response.message == "error") {
+                        log.warn("Received from user-interface: $response")
+                        val msg = if (response.message == "error") {
+                            response
+                        } else {
+                            DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Error updating club id"
+                            )
+                        }
+                        producerService.send("club-gateway-responses", conversationId, msg)
+                        return@whenComplete
+                    }
+                    log.info("Received from user-interface: $response")
+                    log.info("sending request to club-gateway-responses: $response")
+                    producerService.send("club-gateway-responses", conversationId, response)
+                }
+            }
+
+            else -> {
+                val msg = DataPayload.error(
+                    status = HttpStatusCode.BadRequest,
+                    description = "Unknown command"
+                )
+                log.warn("Unknown command: $command" ,"\n", "sending to user-gateway-responses: $msg")
+                producerService.send("club-gateway-responses", conversationId, msg)
+            }
+        }
+    }
+
 }
