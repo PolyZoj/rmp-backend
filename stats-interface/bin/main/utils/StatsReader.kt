@@ -1,6 +1,6 @@
 package ru.polyZoj.utils
 
-import common.DataPayload
+import ru.polyZoj.models.DataPayload
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -11,6 +11,10 @@ import java.sql.PreparedStatement
 import java.util.*
 import java.sql.Timestamp
 import java.time.Instant
+import io.ktor.server.application.log
+import org.slf4j.LoggerFactory
+
+val logger = LoggerFactory.getLogger("StatsService")
 
 object ReadEvents {
     const val SELECT_SQL = """
@@ -49,17 +53,19 @@ class StatsReader(
                 }
             }
 
-            // Преобразование в структуру ответа
+            logger.info(statsMap.keys.toString())
+            logger.info(statsMap.values.toString())
+
             val response = DataPayload(
                 "success",
                 listOf(
                     userId,
-                    statsMap["level"]?.toInt().toString(),
-                    statsMap["xp"]?.toInt().toString(),
-                    statsMap["calorie"]?.toInt().toString(),
-                    statsMap["water"]?.toInt().toString(),
-                    statsMap["workout"]?.toInt().toString(),
-                    statsMap["challenge"]?.toInt().toString()
+                    (statsMap["level"]?.toInt() ?: 0).toString(),
+                    (statsMap["xp"]?.toInt() ?: 0).toString(),
+                    (statsMap["calorie"]?.toInt() ?: 0).toString(),
+                    (statsMap["water"]?.toInt() ?: 0).toString(),
+                    (statsMap["workout"]?.toInt() ?: 0).toString(),
+                    (statsMap["challenge"]?.toInt() ?: 0).toString()
                 )
             )
 
