@@ -21,6 +21,12 @@ data class AddStatsRequest(
 )
 
 @Serializable
+data class DataPayload(
+    val message: String,
+    val params: List<String>
+)
+
+@Serializable
 data class StatusResponse(
     val status: Boolean
 )
