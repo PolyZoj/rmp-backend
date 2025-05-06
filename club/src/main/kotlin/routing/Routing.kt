@@ -42,6 +42,7 @@ fun Application.configureRouting() {
     val kafkaConfig = KafkaConfig()
     kafkaConfig.createTopicIfNotExists("club-gateway-requests", 1, 3.toShort())
     kafkaConfig.createTopicIfNotExists("club-gateway-responses", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("club-user-bridge", 1, 3.toShort())
 
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()

@@ -79,9 +79,17 @@ fun Application.module() {
                     }
                     log.info("sending response to club-responses: $response")
                     producerService.send("club-responses", conversationId, response)
+                    producerService.send(
+                        "club-user-bridge",
+                        conversationId,
+                        DataPayload.build("updateClubId"){
+                            param("club_id", clubId ?: 0)
+                            param("user_id", ownerId.toInt())
+                        }
+                    )
                 }
             }
-            
+
             "listclubs" -> {
                 log.info("List clubs command received, data: $data")
                 val limit = data.getParam<Int>("limit")
@@ -127,6 +135,14 @@ fun Application.module() {
                         )
                     }
                     producerService.send("club-responses", conversationId, response)
+                    producerService.send(
+                        "club-user-bridge",
+                        conversationId,
+                        DataPayload.build("updateClubId"){
+                            param("club_id", clubId)
+                            param("user_id", userId)
+                        }
+                    )
                 }
             }
 
@@ -155,6 +171,14 @@ fun Application.module() {
                         )
                     }
                     producerService.send("club-responses", conversationId, response)
+                    producerService.send(
+                        "club-user-bridge",
+                        conversationId,
+                        DataPayload.build("updateClubId"){
+                            param("club_id", 0)
+                            param("user_id", userId)
+                        }
+                    )
                 }
             }
 
