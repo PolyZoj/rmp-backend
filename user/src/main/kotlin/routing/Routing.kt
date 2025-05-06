@@ -311,7 +311,7 @@ fun Application.configureRouting() {
                         handleFriendAction(
                             call,
                             "findFriend",
-                            "find-username"
+                            "find_username"
                         )
                     }
 

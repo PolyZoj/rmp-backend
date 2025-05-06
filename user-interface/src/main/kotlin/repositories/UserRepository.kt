@@ -279,7 +279,8 @@ class UserRepository {
                                         email     = row[UsersTable.email],
                                         avatarUrl = row[UsersTable.avatarUrl],
                                         isAdmin   = row[UsersTable.isAdmin],
-                                        createdAt = row[UsersTable.createdAt].toKotlinInstant()
+                                        createdAt = row[UsersTable.createdAt].toKotlinInstant(),
+                                        clubId = row[UsersTable.clubId],
                                     ),
                                     username        = row[UserCredentialsTable.username],
                                     weight          = row[UserParametersTable.weight],

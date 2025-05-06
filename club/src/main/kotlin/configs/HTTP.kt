@@ -1,4 +1,4 @@
-package ru.polyZog.configs
+package ru.polyZoj.configs
 
 import io.ktor.http.*
 import io.ktor.server.application.*

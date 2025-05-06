@@ -534,17 +534,17 @@ fun Application.module() {
         }
     }
 
-    val clubConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("club-gateway-requests"))
+    val clubConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf("club-user-bridge"))
     clubConsumer.startConsuming { conversationId, data ->
         log.info("Received club request: $data")
         val command = data.message
         when (command) {
             /** Needs userId and clubId, returns success */
             "updateClubId" -> {
-                val userId = data.getParam<String>("user_id")
-                val clubId = data.getParam<String>("club_id")
+                val userId = data.getParam<Int>("user_id")
+                val clubId = data.getParam<Int>("club_id")
                 if (userId == null || clubId == null) {
-                    producerService.send("club-gateway-responses", conversationId, DataPayload.error(
+                    producerService.send("club-user-bridge", conversationId, DataPayload.error(
                         status = HttpStatusCode.BadRequest,
                         description = "Missing user_id or club_id"
                     ))
@@ -552,8 +552,8 @@ fun Application.module() {
                 }
 
                 val requestPayload = DataPayload.build(command) {
-                    param("user_id", userId)
-                    param("club_id", clubId)
+                    param("user_id", userId.toString())
+                    param("club_id", clubId.toString())
                 }
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
@@ -572,12 +572,12 @@ fun Application.module() {
                                 description = "Error updating club id"
                             )
                         }
-                        producerService.send("club-gateway-responses", conversationId, msg)
+                        // producerService.send("club-user-bridge", conversationId, msg)
                         return@whenComplete
                     }
                     log.info("Received from user-interface: $response")
-                    log.info("sending request to club-gateway-responses: $response")
-                    producerService.send("club-gateway-responses", conversationId, response)
+                    // log.info("sending request to club-gateway-responses: $response")
+                    // producerService.send("club-user-bridge", conversationId, response)
                 }
             }
 
