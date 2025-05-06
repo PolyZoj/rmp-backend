@@ -8,7 +8,7 @@ import ru.polyZoj.models.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import kotlinx.coroutines.*
-import common.DataPayload
+import ru.polyZoj.models.DataPayload
 import common.kafka.RequestProcessor
 import kotlinx.serialization.json.Json
 import org.apache.kafka.clients.consumer.KafkaConsumer

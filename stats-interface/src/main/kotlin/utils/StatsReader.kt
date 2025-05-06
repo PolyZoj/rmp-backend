@@ -1,6 +1,6 @@
 package ru.polyZoj.utils
 
-import common.DataPayload
+import ru.polyZoj.models.DataPayload
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
