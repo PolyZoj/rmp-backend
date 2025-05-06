@@ -439,7 +439,7 @@ fun Application.module() {
                 } else {
                     val friendsInfo = findFriendHelper(searchString)
                     val resp = DataPayload.build(userId) {
-                        param("possible-friend", friendsInfo)
+                        param("possible_friend", friendsInfo)
                     }
                     producerService.send("user-responses", conversationId, resp)
                 }
