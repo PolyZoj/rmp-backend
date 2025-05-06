@@ -12,6 +12,7 @@ import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
 import common.DataPayload
+import common.kafka.KafkaConfig
 import ru.polyZoj.models.Club
 import ru.polyZoj.repositories.ClubDataSource
 import com.auth0.jwt.JWT
@@ -26,53 +27,141 @@ data class JwtConfig(
     val expiresIn: Long = 3_600_000
 ) {
     companion object {
-        fun fromConfig(config: ApplicationConfig): JwtConfig {
-            return JwtConfig(
-                secret = config.property("jwt.secret").getString(),
-                domain = config.property("jwt.domain").getString(),
-                audience = config.property("jwt.audience").getString(),
-                realm = config.property("jwt.realm").getString(),
-                expiresIn = 3_600_000
-            )
-        }
+        fun fromConfig(config: ApplicationConfig): JwtConfig = JwtConfig(
+            secret = config.property("jwt.secret").getString(),
+            domain = config.property("jwt.domain").getString(),
+            audience = config.property("jwt.audience").getString(),
+            realm = config.property("jwt.realm").getString(),
+            expiresIn = 3_600_000
+        )
     }
 }
 
 fun main() {
-    embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
+    embeddedServer(
+        factory = Netty,
+        port = 8080,
+        module = Application::module
+    ).start(wait = true)
 }
 
 fun Application.module() {
+    configureContentNegotiation()
+    configureKafka()
+}
+
+private fun Application.configureContentNegotiation() {
     install(ContentNegotiation) {
         json(Json {
             prettyPrint = true
             ignoreUnknownKeys = true
         })
     }
+}
 
-    val kafkaProducer = createKafkaProducer()
-    val producerService = KafkaProducerService(kafkaProducer)
+private fun Application.configureKafka() {
 
-    val kafkaConsumer = createKafkaConsumer("club-service-consumer")
-    val consumerTopics = listOf("club-requests")
-    val consumerService = KafkaConsumerService(kafkaConsumer, consumerTopics)
+    val kafkaConfig = KafkaConfig().apply {
+        createTopicIfNotExists("club-requests", 1, 3.toShort())
+        createTopicIfNotExists("club-responses", 1, 3.toShort())
+    }
 
-    consumerService.startConsuming { conversationId, payload ->
-        println("Consumed message -> ConversationID: $conversationId, Message: $payload")
-        
-        try {
-            println(payload)
-            when (payload.message.lowercase()) {
-                "create" -> handleCreateClub(payload, conversationId, producerService)
-                "listclubs" -> handleListClubs(payload, conversationId, producerService)
-                "addmember" -> handleAddMember(payload, conversationId, producerService)
-                "removemember" -> handleRemoveMember(payload, conversationId, producerService)
-                "getinfo" -> handleGetInfo(payload, conversationId, producerService)
-                else -> sendError(conversationId, "Invalid message", producerService)
-            }
-        } catch (e: Exception) {
-            sendError(conversationId, "Invalid request format", producerService)
+
+    val producerService = KafkaProducerService(createKafkaProducer())
+    val gatewayConsumerService = KafkaConsumerService(
+        consumer = createKafkaConsumer("club-service-consumer"),
+        topics = listOf("club-gateway-requests")
+    )
+
+    val interfaceConsumerService = KafkaConsumerService(
+        consumer = createKafkaConsumer("club-service-consumer"),
+        topics = listOf("club-responses")
+    )
+
+
+    gatewayConsumerService.startConsuming { conversationId, payload ->
+        handleKafkaGatewayMessage(conversationId, payload, producerService)
+    }
+
+    interfaceConsumerService.startConsuming { conversationId, payload ->
+        handleKafkaInterfaceMessage(conversationId, payload, producerService)
+    }
+}
+
+
+private fun handleKafkaGatewayMessage(
+    conversationId: String,
+    payload: DataPayload,
+    producer: KafkaProducerService
+) {
+    println("Consumed message -> ConversationID: $conversationId, Message: $payload.message")
+    
+    try {
+        when (payload.message.lowercase()) {
+            "create" -> handleCreateClub(payload, conversationId, producer)
+            "listclubs" -> handleListClubs(payload, conversationId, producer)
+            "addmember" -> handleAddMember(payload, conversationId, producer)
+            "removemember" -> handleRemoveMember(payload, conversationId, producer)
+            "getinfo" -> handleGetInfo(payload, conversationId, producer)
+            else -> sendError(conversationId, "Invalid message", producer)
         }
+    } catch (e: Exception) {
+        sendError(conversationId, "Invalid request format", producer)
+    }
+}
+
+private fun handleKafkaInterfaceMessage(
+    conversationId: String,
+    payload: DataPayload,
+    producer: KafkaProducerService
+) {
+    println("Consumed message -> ConversationID: $conversationId, Message: $payload.message")
+    
+    try {
+        when (payload.message.lowercase()) {
+            "clubcreated" -> {
+                producer.send("club-gateway-responses"
+                ,conversationId
+                ,DataPayload.build("created") {
+                    param("clubId", payload.getParam<String>("clubId").orEmpty())
+                })
+            }
+            "clubslisted" -> {
+                producer.send("club-gateway-responses"
+                ,conversationId
+                ,DataPayload.build("clubsListed") {
+                    param("clubs", payload.getParam<List<Club?>>("clubs"))
+                })
+            }
+            "memberadded" -> {
+                producer.send("club-gateway-responses"
+               ,conversationId
+               ,DataPayload.build("memberAdded") {
+                    param("userId", payload.getParam<String>("userId").orEmpty())
+                    param("clubId", payload.getParam<String>("clubId").orEmpty())
+                })
+            }
+            "memberremoved" -> {
+                producer.send("club-gateway-responses"
+               ,conversationId
+               ,DataPayload.build("memberRemoved") {
+                    param("userId", payload.getParam<String>("userId").orEmpty())
+                    param("clubId", payload.getParam<String>("clubId").orEmpty())
+                })
+            }
+            "clubinfo" -> {
+                producer.send("club-gateway-responses"
+               ,conversationId
+               ,DataPayload.build("clubInfo") {
+                    param("club", payload.getParam<Club>("club"))
+                })
+            }
+
+
+            else -> sendError(conversationId, "Invalid message", producer)
+        }
+    } catch (e: Exception) {
+        sendError(conversationId, "Invalid request format", producer)
     }
 }
 
@@ -81,22 +170,21 @@ private fun handleCreateClub(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    println("sending response")
     val name = payload.getParam<String>("name").orEmpty()
     val description = payload.getParam<String>("description").orEmpty()
     val ownerId = payload.getParam<String>("ownerId").orEmpty()
-    println("sending response")
-    if (name.isBlank() || ownerId.isBlank()) {
-        sendError(conversationId, "Missing required params", producer)
+    if (name.isBlank() || ownerId.isBlank() || ownerId.toDoubleOrNull() == null) {
+        sendError(conversationId, "Missing required params or Id not a number", producer)
         return
     }
-    println("sending response")
-    val club = ClubDataSource.createClub(name, description, ownerId)
-    val response = DataPayload.build("created") {
-        param("id", club.id)
-        param("name", club.name)
-    }
-    producer.send("club-responses", conversationId, response)
+
+    // val club = ClubDataSource.createClub(name, description, ownerId)
+    // val response = DataPayload.build("created") {
+    //     param("id", club.id)
+    //     param("name", club.name)
+    // }
+    // producer.send("club-gateway-responses", conversationId, response)
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleListClubs(
@@ -104,15 +192,15 @@ private fun handleListClubs(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    val limit = payload.getParam<Int>("limit") ?: 10
-    val offset = payload.getParam<Int>("offset") ?: 0
+    // val limit = payload.getParam<Int>("limit") ?: 10
+    // val offset = payload.getParam<Int>("offset") ?: 0
 
-    val clubs = ClubDataSource.getClubs(limit, offset)
+    // val clubs = ClubDataSource.getClubs(limit, offset)
     
-    val response = DataPayload.build("clubs") {
-        param("clubs", clubs)
-    }
-    producer.send("club-responses", conversationId, response)
+    // val response = DataPayload.build("clubsList") {
+    //     param("clubs", clubs)
+    // }
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleAddMember(
@@ -128,16 +216,7 @@ private fun handleAddMember(
         return
     }
     
-    when (ClubDataSource.addMember(clubId, userId)) {
-        true -> {
-            val response = DataPayload.build("memberAdded") {
-                param("userId", userId)
-                param("clubId", clubId)
-            }
-            producer.send("club-responses", conversationId, response)
-        }
-        false -> sendError(conversationId, "Club not found or user already member", producer)
-    }
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleRemoveMember(
@@ -153,16 +232,7 @@ private fun handleRemoveMember(
         return
     }
     
-    when (ClubDataSource.removeMember(clubId, userId)) {
-        true -> {
-            val response = DataPayload.build("memberRemoved") {
-                param("userId", userId)
-                param("clubId", clubId)
-            }
-            producer.send("club-responses", conversationId, response)
-        }
-        false -> sendError(conversationId, "Club not found or user not member", producer)
-    }
+    producer.send("club-requests", conversationId, payload)
 }
 
 private fun handleGetInfo(
@@ -171,21 +241,14 @@ private fun handleGetInfo(
     producer: KafkaProducerService
 ) {
     val clubId = payload.getParam<String>("clubId").orEmpty()
-    val club = ClubDataSource.getClub(clubId)
     
-    if (club != null) {
-        val response = DataPayload.build("clubInfo") {
-            param("id", club.id)
-            param("name", club.name)
-            param("description", club.description)
-            param("ownerId", club.ownerId)
-            param("members", club.members)
-        }
-        producer.send("club-responses", conversationId, response)
-    } else {
-        sendError(conversationId, "Club not found", producer)
+    if (clubId.isBlank()) {
+        sendError(conversationId, "Missing club ID", producer)
+        return
     }
+    producer.send("club-requests", conversationId, payload)
 }
+    
 
 // TODO: Изменить чтобы использовал DataPayload.error с кодом ошибки
 private fun sendError(conversationId: String, message: String, producer: KafkaProducerService) {
@@ -193,6 +256,6 @@ private fun sendError(conversationId: String, message: String, producer: KafkaPr
         message = "error",
         params = mapOf("message" to message.toJsonElement())
     )
-    producer.send("club-responses", conversationId, response)
+    producer.send("club-gateway-responses", conversationId, response)
 }
 

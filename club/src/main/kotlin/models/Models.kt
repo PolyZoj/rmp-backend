@@ -1,4 +1,4 @@
-package ru.polyZog.models
+package ru.polyZoj.models
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
@@ -14,26 +14,20 @@ data class Club(
 
 
 @Serializable
-data class ClubCreateRequest(val name: String, val description: String, val ownerId: String)
+data class ClubCreateRequest(val name: String, val description: String)
 
 @Serializable
 data class ClubMemberRequest(val userId: String)
 
 @Serializable
-data class ClubCreateResponse(val clubId: String, val name: String)
+data class ClubCreateResponse(val clubId: String)
 
 @Serializable
 data class ClubMemberResponse(val message: String,val userId: String, val clubId: String)
 
 @Serializable
 data class ClubInfoResponse(
-    val club: Club
+    val club: Club?
 )
 
-
-@Serializable
-data class DataPayload(
-    val message: String,
-    val params: List<String>
-)
 

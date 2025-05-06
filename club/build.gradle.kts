@@ -5,7 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "1.8.21"
 }
 
-group = "ru.polyZog"
+group = "ru.polyZoj"
 version = "0.0.1"
 
 application {
@@ -20,6 +20,7 @@ repositories {
 }
 
 dependencies {
+    implementation("ru.polyZoj:common")
     implementation(libs.ktor.simple.cache)
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.simple.redis.cache)
@@ -42,3 +43,13 @@ dependencies {
 
     implementation("io.ktor:ktor-server-openapi:3.1.1")
 }
+tasks.register("downloadDependencies") {
+    doLast {
+        configurations
+            .filter { it.isCanBeResolved }
+            .forEach { configuration ->
+                configuration.resolve()
+            }
+    }
+}
+

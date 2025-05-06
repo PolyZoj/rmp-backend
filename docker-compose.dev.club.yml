@@ -8,7 +8,12 @@ x-microservice-common: &microservice-common
     - "com.docker.compose.project=rmp-backend"
 services:
   club-service:
-    build: ./club-service
+
+    build:
+      context: .
+      dockerfile: ./club-service/Dockerfile
+      args:
+        SERVICE: club-service
     ports:
       - "8080"
     depends_on:
@@ -25,7 +30,11 @@ services:
       - backend_net
 
   club-gateway:
-    build: ./club
+    build:
+      context: .
+      dockerfile: ./club/Dockerfile
+      args:
+        SERVICE: club
     ports:
       - "8080"
     depends_on:
@@ -69,7 +78,7 @@ services:
     ports:
       - "22181:2181"
     <<: *microservice-common
-    
+
   kafka:
     image: confluentinc/cp-kafka:7.4.4
     hostname: kafka
