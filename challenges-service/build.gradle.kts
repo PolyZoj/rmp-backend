@@ -21,6 +21,7 @@ repositories {
 }
 
 dependencies {
+    implementation("ru.polyZoj:common")
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
     implementation(libs.logback.classic)
@@ -37,4 +38,14 @@ dependencies {
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)
+}
+
+tasks.register("downloadDependencies") {
+    doLast {
+        configurations
+            .filter { it.isCanBeResolved }
+            .forEach { configuration ->
+                configuration.resolve()
+            }
+    }
 }

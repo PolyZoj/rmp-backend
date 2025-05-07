@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+
+psql -v ON_ERROR_STOP=1 --username "postgres" <<-EOSQL
+DO
+\$\$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM pg_catalog.pg_roles WHERE rolname = 'replicator'
+  ) THEN
+    CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD '$REPL_PASSWORD';
+  END IF;
+END
+\$\$;
+
+DO
+\$\$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM pg_catalog.pg_database WHERE datname = '$POSTGRES_DB'
+  ) THEN
+    CREATE DATABASE $POSTGRES_DB;
+  END IF;
+END
+\$\$;
+EOSQL
+
+cp /etc/postgresql/postgresql.conf "$PGDATA/postgresql.conf"
+cp /etc/postgresql/pg_hba.conf    "$PGDATA/pg_hba.conf"
+
+chown -R postgres:postgres "$PGDATA"
+echo "[init-master] done."
