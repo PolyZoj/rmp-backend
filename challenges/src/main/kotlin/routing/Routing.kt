@@ -29,6 +29,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
 import java.util.concurrent.ConcurrentHashMap
 
 inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
@@ -37,8 +39,8 @@ fun Application.configureRouting() {
     val log = logger<Application>()
 
     val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists("user-gateway-requests", 1, 3.toShort()) // TODO CHANGE
-    kafkaConfig.createTopicIfNotExists("user-gateway-responses", 1, 3.toShort()) // TODO CHANGE
+    kafkaConfig.createTopicIfNotExists("challenges-gateway-requests", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists("challenges-gateway-responses", 1, 3.toShort())
 
     val pendingResponses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
@@ -46,9 +48,9 @@ fun Application.configureRouting() {
 
     val kafkaProducer = createKafkaProducer()
 
-    val consumer = createKafkaConsumer("user-gateway-consumer") // TODO CHANGE
+    val consumer = createKafkaConsumer("challenges-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("user-responses")) // TODO CHANGE
+        consumer.subscribe(listOf("challenges-responses"))
         while (true) {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
@@ -80,8 +82,88 @@ fun Application.configureRouting() {
 
     routing {
         authenticate("auth-jwt"){
-            route("/api/v1/users") { // TODO CHANGE
+            route("/api/v1/challenges") {
 
+                route("/achievements") {
+                    // GET /challenges/{id} - получение всех ачивок
+                    get("/{id}") {
+                        val id = call.parameters["id"]
+                        val userId = verifyJWTandGetUserId(call)
+                            ?: return@get call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        val param = id ?: userId
+                        log.info("GET /achievements/{}", param)
+
+                        val requestPayload = DataPayload.build("achievementsAll") {
+                            param("user_id", userId)
+                        }
+                        log.info("sending request to challenges-gateway-requests: {}", requestPayload)
+                        reqProcessor.processRequest(
+                            requestPayload,
+                            "challenges-gateway-requests",
+                            call,
+                            kafkaProducer,
+                            pendingResponses,
+                            mutex,
+                            ::handleSuccessfulResponse
+                        )
+
+                    }
+
+                    // GET /challenges/{id}/{day} - получение ачивок данного дня
+                    get("/{id}/{day}") {
+                        val idParam = call.parameters["id"]
+                        val dayParam = call.parameters["day"]
+                        val userId = verifyJWTandGetUserId(call)
+                            ?: return@get call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        val targetId = idParam ?: userId
+                        val date = try {
+                            LocalDate.parse(dayParam)
+                        } catch (e: DateTimeParseException) {
+                            return@get call.respond(HttpStatusCode.BadRequest, "Invalid date format: $dayParam")
+                        }
+                        log.info("GET /achievements/{}/{}", targetId, date)
+
+                        val requestPayload = DataPayload.build("achievementsDay") {
+                            param("user_id", userId)
+                            param("date", date)
+                        }
+                        log.info("sending request to challenges-gateway-requests: {}", requestPayload)
+                        reqProcessor.processRequest(
+                            requestPayload,
+                            "challenges-gateway-requests",
+                            call,
+                            kafkaProducer,
+                            pendingResponses,
+                            mutex,
+                            ::handleSuccessfulResponse
+                        )
+                    }
+
+                    // GET /challenges/{id}/today - получение ачивок за сегодня
+                    get("/{id}/today") {
+                        val idParam = call.parameters["id"]
+                        val userId = verifyJWTandGetUserId(call)
+                            ?: return@get call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        val targetId = idParam ?: userId
+                        val today = LocalDate.now()
+                        log.info("GET /achievements/{}/today", targetId)
+
+                        val requestPayload = DataPayload.build("achievementsToday") {
+                            param("user_id", userId)
+                            param("date", today)
+                        }
+                        log.info("sending request to challenges-gateway-requests: {}", requestPayload)
+                        reqProcessor.processRequest(
+                            requestPayload,
+                            "challenges-gateway-requests",
+                            call,
+                            kafkaProducer,
+                            pendingResponses,
+                            mutex,
+                            ::handleSuccessfulResponse
+                        )
+                    }
+                }
             }
         }
 
@@ -94,7 +176,17 @@ private suspend fun handleSuccessfulResponse(
     call: ApplicationCall
 ) {
     when (operation) {
-        "userInfo" -> call.respond( // TODO CHANGE
+        "achievementsAll" -> call.respond(
+            HttpStatusCode.OK,
+            result.params
+        )
+
+        "achievementsDay" -> call.respond(
+            HttpStatusCode.OK,
+            result.params
+        )
+
+        "achievementsToday" -> call.respond(
             HttpStatusCode.OK,
             result.params
         )

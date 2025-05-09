@@ -8,19 +8,14 @@ import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 import common.DataPayload
 import ru.polyZoj.db.*
-import common.exceptions.DuplicateFieldException
 import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
-import common.models.FriendshipStatus
-import common.models.UserBasicInfo
 import io.ktor.http.HttpStatusCode
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import common.models.UserRegistration
-import common.models.UserUpdatable
-import ru.polyZoj.repositories.UserRepository
+import ru.polyZoj.repositories.ChallengesRepository
 
 
 fun main() {
@@ -50,7 +45,7 @@ fun Application.module() {
     val kafkaConsumer = createKafkaConsumer("user-interface-consumer") // todo change
     val consumerService = KafkaConsumerService(kafkaConsumer, listOf("user-requests")) // todo change
 
-    val userRepository = UserRepository()
+    val challengesRepository = ChallengesRepository()
 
     consumerService.startConsuming { conversationId, data ->
         log.info("Received message: $data")
