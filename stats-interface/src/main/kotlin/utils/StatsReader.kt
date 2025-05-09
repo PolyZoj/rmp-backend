@@ -11,10 +11,6 @@ import java.sql.PreparedStatement
 import java.util.*
 import java.sql.Timestamp
 import java.time.Instant
-import io.ktor.server.application.log
-import org.slf4j.LoggerFactory
-
-val logger = LoggerFactory.getLogger("StatsService")
 
 object ReadEvents {
     const val SELECT_SQL = """
@@ -52,9 +48,6 @@ class StatsReader(
                     statsMap[type] = total
                 }
             }
-
-            logger.info(statsMap.keys.toString())
-            logger.info(statsMap.values.toString())
 
             val response = DataPayload(
                 "success",

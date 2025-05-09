@@ -20,10 +20,11 @@ import java.sql.DriverManager
 import ru.polyZoj.utils.StatsWriter
 import ru.polyZoj.utils.WriteEvents
 import ru.polyZoj.utils.StatsReader
+import ru.polyZoj.utils.StatsReaderDaily
 import io.ktor.server.application.log
 import org.slf4j.LoggerFactory
 
-val logger = LoggerFactory.getLogger("StatsService")
+val logger = LoggerFactory.getLogger("StatsServiceApplication")
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -74,25 +75,33 @@ fun Application.module() {
 
     val writeProducer = KafkaProducer<String, String>(producerConfig())
     val readProducer = KafkaProducer<String, String>(producerConfig())
+    val readDailyProducer = KafkaProducer<String, String>(producerConfig())
     
     val writeConsumer = KafkaConsumer<String, String>(consumerConfig("stats-write-group"))
     val readConsumer = KafkaConsumer<String, String>(consumerConfig("stats-read-group"))
+    val readDailyConsumer = KafkaConsumer<String, String>(consumerConfig("stats-read-group-daily"))
+    val chellengesConsumer = KafkaConsumer<String, String>(consumerConfig("stats-read-group"))
     val writer = StatsWriter(connection, writeProducer)
     val reader = StatsReader(connection, readProducer)
+    val readerDaily = StatsReaderDaily(connection, readDailyProducer)
 
     writeConsumer.subscribe(listOf("stats-req-write"))
     readConsumer.subscribe(listOf("stats-req-read"))
+    readDailyConsumer.subscribe(listOf("stats-req-read-daily"))
 
     Runtime.getRuntime().addShutdownHook(Thread {
         writeConsumer.close()
         readConsumer.close()
+        readDailyConsumer.close()
         writeProducer.close()
         readProducer.close()
+        readDailyProducer.close()
         connection.close()
     })
 
     launchConsumerLoop(writeConsumer, writer::processWriteEvent)
     launchConsumerLoop(readConsumer, reader::processReadEvent)
+    launchConsumerLoop(readDailyConsumer, readerDaily::processReadEventDaily)
 }
 
 private fun Application.launchConsumerLoop(
