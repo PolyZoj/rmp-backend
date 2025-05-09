@@ -21,7 +21,6 @@ repositories {
 }
 
 dependencies {
-    implementation("ch.qos.logback:logback-classic:1.4.7")
     implementation("org.slf4j:slf4j-api:2.0.7")
     implementation("com.clickhouse:clickhouse-jdbc:0.4.6")
     implementation("ru.polyZoj:common")
