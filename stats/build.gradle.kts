@@ -1,4 +1,3 @@
-
 plugins {
     application
     alias(libs.plugins.kotlin.jvm)
@@ -21,8 +20,6 @@ repositories {
 }
 
 dependencies {
-    implementation("ch.qos.logback:logback-classic:1.4.7")
-    implementation("org.slf4j:slf4j-api:2.0.7")
     implementation("ru.polyZoj:common")
     implementation(libs.ktor.simple.cache)
     implementation(libs.ktor.server.core)
@@ -42,7 +39,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
     implementation("io.ktor:ktor-client-core:2.3.2")
     implementation("io.ktor:ktor-client-cio:2.3.2") 
-    implementation("org.apache.kafka:kafka-clients:3.7.1")
+    implementation("org.apache.kafka:kafka-clients:3.5.1")
+
+    implementation("io.ktor:ktor-server-openapi:3.1.1")
 }
 
 tasks.register("downloadDependencies") {
@@ -54,3 +53,4 @@ tasks.register("downloadDependencies") {
             }
     }
 }
+

@@ -52,6 +52,12 @@ fun Application.createKafkaTopics() {
         put("client.id", "stats-service-admin")
     }
 
+    
+    val i :Int = 1
+
+
+
+
     val admin = AdminClient.create(adminProps)
     
 //    val topics = listOf(
