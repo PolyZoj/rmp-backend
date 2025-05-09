@@ -422,7 +422,7 @@ services:
           cpus: "0.75"
           memory: 512M
 
-  stats-inerface:
+  stats-interface:
     build:
       context: .
       dockerfile: ./stats-interface/Dockerfile

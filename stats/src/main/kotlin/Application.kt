@@ -4,6 +4,8 @@ import io.ktor.server.application.*
 import io.ktor.server.application.*
 import ru.polyZoj.configs.configureHTTP
 import ru.polyZoj.routing.configureRouting
+import ru.polyZoj.configs.configureSecurity
+import ru.polyZoj.configs.configureHTTP
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.application.*
@@ -27,6 +29,9 @@ fun Application.module() {
         )
     }
 
+    configureSecurity()
+
+    configureHTTP()
 
     configureRouting()
 }
