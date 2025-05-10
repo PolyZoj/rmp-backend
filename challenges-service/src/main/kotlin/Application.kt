@@ -107,7 +107,7 @@ fun Application.module() {
                         "challenges-requests",
                         UUID.randomUUID().toString(),
                         DataPayload.build("completeAchievement") {
-                            param("achievement_id", orig.id)
+                            param("achievement", orig)
                         }
 
                     )

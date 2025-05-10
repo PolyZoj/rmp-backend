@@ -135,26 +135,26 @@ fun Application.module() {
 
             "completeAchievement" -> {
                 log.info("completeAchievement command received, data: $data")
-                val achievementId = data.getParam<String>("achievement_id")
+                val achievement = data.getParam<Achievement>("achievement")
 
-                if (achievementId == null) {
+                if (achievement == null) {
                     val err = DataPayload.error(
                         status      = HttpStatusCode.BadRequest,
-                        description = "Missing required achievement ID"
+                        description = "Missing required achievement"
                     )
                     producerService.send("challenges-responses", conversationId, err)
                 } else {
-                    val rowsUpdated = challengesRepository.setAchievementsAsCompleted(achievementId)
+                    val rowsUpdated = challengesRepository.setAchievementsAsCompleted(achievement)
 
                     val payload = if (rowsUpdated > 0) {
                         DataPayload.build("success") {
-                            param("achievement_id", achievementId)
+                            param("achievement_id", achievement.id)
                             param("status", "completed")
                         }
                     } else {
                         DataPayload.error(
                             status      = HttpStatusCode.NotFound,
-                            description = "Achievement with id=$achievementId not found"
+                            description = "Achievement with id=${achievement.id} not found"
                         )
                     }
 
