@@ -167,28 +167,79 @@ services:
       - "com.docker.compose.project=rmp-backend"
       - "com.docker.compose.service=psql_club_replica"
 
-#  psql_challenges:
-#    image: postgres:alpine
-#    environment:
-#      - POSTGRES_DB=challenges_db
-#      - POSTGRES_USER=${DB_USER:-postgres}
-#      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
-#    volumes:
-#      - psql_challenges_data:/var/lib/postgresql/data
-#    ports:
-#      - "5435:5432"
-#    healthcheck:
-#      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-#      interval: 10s
-#      timeout: 5s
-#      retries: 5
-#      start_period: 10s
-#    networks:
-#      - backend_net
-#    deploy:
-#      restart_policy:
-#        condition: on-failure
-#        max_attempts: 10
+
+  psql_challenges_master:
+    build:
+      context: ./db/template
+    image: rmp-backend-psql_challenges_master
+    environment:
+      POSTGRES_DB: challenges_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data
+      PGENCODING: UTF8
+      PGLOCALE: en_US.UTF-8
+      REPL_PASSWORD: ${DB_REPL_PASSWORD:-repl_pass}
+      PEER_HOST: psql_challenges_replica
+      ROLE: master
+    entrypoint: [ "/home/scripts/custom-entrypoint.sh" ]
+    volumes:
+      - psql_challenges_master_data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+    healthcheck:
+      test: [ "CMD-SHELL","pg_isready -U ${DB_USER:-postgres}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.service=psql_challenges"
+
+  # Реплика БД пользователей для операций чтения
+  psql_challenges_replica:
+    build:
+      context: ./db/template
+    image: rmp-backend-psql_challenges_replica
+    environment:
+      POSTGRES_DB: challenges_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data
+      PGENCODING: UTF8
+      PGLOCALE: en_US.UTF-8
+      REPL_PASSWORD: ${DB_REPL_PASSWORD:-repl_pass}
+      PEER_HOST: psql_challenges_master
+      ROLE: hot_standby
+    entrypoint: [ "/home/scripts/custom-entrypoint.sh" ]
+    volumes:
+      - psql_challenges_replica_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: [ "CMD-SHELL","pg_isready -U ${DB_USER:-postgres}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      - psql_challenges_master
+    networks:
+      - backend_net
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 10
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.service=psql_challenges_replica"
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -250,8 +301,7 @@ services:
         condition: on-failure
         max_attempts: 10
 
-    # Microservices
-    # Externally exposed
+  # Microservices
 
   auth-service:
     build:
@@ -380,6 +430,7 @@ services:
         limits:
           cpus: "0.75"
           memory: 512M
+
   stats:
     build:
       context: .
@@ -479,27 +530,80 @@ services:
         limits:
           cpus: "0.75"
           memory: 512M
-#  challenges-service:
-#    build:
-#      context: .
-#      dockerfile: challenges-service/Dockerfile
-#      args:
-#        <<: *build-args
-#        SERVICE: challenges-service
-#    image: rmp-backend-challenges-service
-#    depends_on:
-#      - psql_challenges
-#      - kafka
-#    expose:
-#      - "8080"
-#    environment:
-#      - DB_HOST=psql_challenges
-#      - DB_PORT=5432
-#      - DB_NAME=challenges_db
-#      - DB_USER=postgres
-#      - DB_PASSWORD=postgres
-#      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-#    <<: *microservice-common
+
+  challenges-interface:
+    build:
+      context: .
+      dockerfile: challenges-interface/Dockerfile
+      args:
+        SERVICE: challenges-interface
+        <<: *build-args
+    image: rmp-backend-challenges-interface
+    depends_on:
+      - psql_challenges_master
+      - psql_challenges_replica
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      DB_HOST_MASTER: psql_challenges_master
+      DB_PORT_MASTER: 5432
+      DB_HOST_REPLICA: psql_challenges_replica
+      DB_PORT_REPLICA: 5432
+      DB_NAME: challenges_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    <<: *microservice-common
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+
+  challenges-service:
+    build:
+      context: .
+      dockerfile: challenges-service/Dockerfile
+      args:
+        SERVICE: challenges-service
+        <<: *build-args
+    image: rmp-backend-challenges-service
+    depends_on:
+      - kafka
+      - challenges-interface
+    expose:
+      - "8080"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    <<: *microservice-common
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+
+  challenges:
+    build:
+      context: .
+      dockerfile: challenges/Dockerfile
+      args:
+        SERVICE: challenges
+        <<: *build-args
+    image: rmp-backend-challenges
+    depends_on:
+      - challenges-service
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    <<: *microservice-common
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
 
 #  log-service:
 #    build:
@@ -535,7 +639,7 @@ services:
       - auth-service
       - user
       - stats
-      #- challenges-service
+      - challenges
       - club-service
       - club-gateway
     networks:
@@ -559,10 +663,14 @@ volumes:
     labels:
       - "com.docker.compose.project=rmp-backend"
       - "com.docker.compose.volume=psql_club_replica_data"
-  psql_challenges_data:
+  psql_challenges_master_data:
     labels:
       - "com.docker.compose.project=rmp-backend"
-      - "com.docker.compose.volume=psql_challenges_data"
+      - "com.docker.compose.volume=psql_challenges_master_data"
+  psql_challenges_replica_data:
+    labels:
+      - "com.docker.compose.project=rmp-backend"
+      - "com.docker.compose.volume=psql_challenges_replica_data"
   clickhouse_data:
     labels:
       - "com.docker.compose.project=rmp-backend"
