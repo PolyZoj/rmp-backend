@@ -50,7 +50,7 @@ fun Application.configureRouting() {
 
     val consumer = createKafkaConsumer("challenges-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("challenges-gateway-responses")) // TODO: o si no usa challenges-responses
+        consumer.subscribe(listOf("challenges-gateway-responses"))
         while (true) {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->

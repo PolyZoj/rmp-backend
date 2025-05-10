@@ -41,6 +41,7 @@ class AchievementCalculator(private val statsClient: StatsClient) {
 
     private fun accumulate(userId: String, start: LocalDate, end: LocalDate): List<DailyStats> {
         val days = ChronoUnit.DAYS.between(start, end).toInt()
+        // TODO needs cache
         return (0..days).map { offset ->
             val payload = statsClient.readDaily(userId, start.plusDays(offset.toLong()).toString())
             DailyStats(

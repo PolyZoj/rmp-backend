@@ -96,6 +96,9 @@ fun Application.module() {
                 } else {
                     val achievements = challengesRepository.getAllAchievements(userId.toInt())
                     val newAchs = populateAchievements(userId, achievements)
+                    newAchs.map { achievement ->
+                        challengesRepository.addAchievement(achievement)
+                    }
                     val finalList = achievements + newAchs
 
                     val resp = DataPayload.build("success") {
