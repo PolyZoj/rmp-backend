@@ -35,6 +35,7 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.exposed.dao)
     implementation(libs.exposed.java.time)
+    implementation("io.lettuce:lettuce-core:6.2.3.RELEASE")
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)

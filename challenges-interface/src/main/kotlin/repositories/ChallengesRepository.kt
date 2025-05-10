@@ -7,6 +7,9 @@ import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
+import ru.polyZoj.cache.RedisFactory
+import ru.polyZoj.cache.getJson
+import ru.polyZoj.cache.setJson
 import ru.polyZoj.db.AchievementsTable
 import ru.polyZoj.db.DatabaseFactory
 import ru.polyZoj.logger
@@ -14,6 +17,12 @@ import java.time.LocalDate
 
 class ChallengesRepository {
     private val log = logger<ChallengesRepository>()
+
+    /**
+     * Cache keys:
+     * - achievementsOf:userId:<userId>
+     */
+    private val redis = RedisFactory.sync
 
     private fun ResultRow.rowToAchievement(): Achievement {
         return Achievement(
@@ -34,6 +43,14 @@ class ChallengesRepository {
     suspend fun getAllAchievements(userId: Int): List<Achievement> {
         log.debug("Entering getAllAchievements with user id: $userId")
 
+        val cachedAchs = redis.getJson<List<Achievement>>("achievementsOf:userId:$userId")
+        if (cachedAchs != null) {
+            log.info("Found {} achievements", cachedAchs.size)
+            return cachedAchs
+        } else {
+            log.debug("No achievements found")
+        }
+
         val achievements: List<Achievement> = DatabaseFactory.read {
             AchievementsTable.selectAll()
                 .where { AchievementsTable.userId eq userId }
@@ -50,6 +67,8 @@ class ChallengesRepository {
                     }
                 }
         }
+
+        redis.setJson("achievementsOf:userId:$userId", achievements, 600)
 
         return achievements
     }
@@ -83,16 +102,16 @@ class ChallengesRepository {
     }
 
     /** Set achievements as completed **/
-    suspend fun setAchievementsAsCompleted(achievementId: String): Int {
-        log.debug("Entering setAchievementsAsCompleted with achievementId: {}", achievementId)
+    suspend fun setAchievementsAsCompleted(achievement: Achievement): Int {
+        log.debug("Entering setAchievementsAsCompleted with achievementId: {}", achievement.id)
         val rows = DatabaseFactory.write {
             AchievementsTable.update({
-                (AchievementsTable.id eq achievementId.toInt())
+                (AchievementsTable.id eq achievement.id?.toInt())
             }) {
                 it[status] = AchievementStatus.COMPLETED
             }
         }
-
+        redis.del("achievementsOf:userId:${achievement.userId}")
         return rows
     }
 
@@ -113,6 +132,8 @@ class ChallengesRepository {
                 it[AchievementsTable.endDate] = achievement.endDate
             }
         }
+
+        redis.del("achievementsOf:userId:${achievement.userId}")
     }
 
 
