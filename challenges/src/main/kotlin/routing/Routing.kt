@@ -50,7 +50,7 @@ fun Application.configureRouting() {
 
     val consumer = createKafkaConsumer("challenges-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("challenges-responses"))
+        consumer.subscribe(listOf("challenges-gateway-responses")) // TODO: o si no usa challenges-responses
         while (true) {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
@@ -124,7 +124,7 @@ fun Application.configureRouting() {
                         log.info("GET /achievements/{}/{}", targetId, date)
 
                         val requestPayload = DataPayload.build("achievementsDay") {
-                            param("user_id", userId)
+                            param("user_id", targetId)
                             param("date", date)
                         }
                         log.info("sending request to challenges-gateway-requests: {}", requestPayload)
@@ -148,8 +148,8 @@ fun Application.configureRouting() {
                         val today = LocalDate.now()
                         log.info("GET /achievements/{}/today", targetId)
 
-                        val requestPayload = DataPayload.build("achievementsToday") {
-                            param("user_id", userId)
+                        val requestPayload = DataPayload.build("achievementsDay") {
+                            param("user_id", targetId)
                             param("date", today)
                         }
                         log.info("sending request to challenges-gateway-requests: {}", requestPayload)

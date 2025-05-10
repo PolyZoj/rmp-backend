@@ -2,10 +2,11 @@ package ru.polyZoj.db
 
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.javatime.date
-import ru.polyZoj.models.AchievementStatus
-import ru.polyZoj.models.AchievementType
+import common.models.AchievementStatus
+import common.models.AchievementType
 
 object AchievementsTable : IntIdTable("achievements") {
+    val userId      = integer("user_id")
     val icon        = varchar("icon", length = 255)
     val description = text("description")
     val title       = varchar("title", length = 255)
