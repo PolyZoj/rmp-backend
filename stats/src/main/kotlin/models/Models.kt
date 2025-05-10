@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 data class StatsResponse(
     val level: Int,
     val xp: Int,
+    val steps_count: Int,
     val calorie_count: Int,
     val water_count: Int,
     val workouts_count: Int,
@@ -36,6 +37,7 @@ data class DailyStatsResponse(
     val date: String,
     val level: Int,
     val xp: Int,
+    val steps_count: Int,
     val calorie_count: Int,
     val water_count: Int,
     val workouts_count: Int,

@@ -55,6 +55,7 @@ class StatsReader(
                     userId,
                     (statsMap["level"]?.toInt() ?: 0).toString(),
                     (statsMap["xp"]?.toInt() ?: 0).toString(),
+                    (statsMap["steps"]?.toInt() ?: 0).toString(),
                     (statsMap["calorie"]?.toInt() ?: 0).toString(),
                     (statsMap["water"]?.toInt() ?: 0).toString(),
                     (statsMap["workout"]?.toInt() ?: 0).toString(),

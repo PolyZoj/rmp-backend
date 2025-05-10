@@ -278,15 +278,17 @@ private fun parseStatsResponse(response: DataPayload): StatsResponse {
         StatsResponse(
             level = response.params[1].toInt(),
             xp = response.params[2].toInt(),
-            calorie_count = response.params[3].toInt(),
-            water_count = response.params[4].toInt(),
-            workouts_count = response.params[5].toInt(),
-            completed_challenges = response.params[6].toInt()
+            steps_count = response.params[3].toInt(),
+            calorie_count = response.params[4].toInt(),
+            water_count = response.params[5].toInt(),
+            workouts_count = response.params[6].toInt(),
+            completed_challenges = response.params[7].toInt()
         )
     } catch (e: Exception) {
         StatsResponse(
             level = 0,
             xp = 0,
+            steps_count = 0,
             calorie_count = 0,
             water_count = 0,
             workouts_count = 0,
@@ -301,10 +303,11 @@ private fun parseDailyStatsResponse(response: DataPayload): DailyStatsResponse {
             date = response.params[1],
             level = response.params[2].toInt(),
             xp = response.params[3].toInt(),
-            calorie_count = response.params[4].toInt(),
-            water_count = response.params[5].toInt(),
-            workouts_count = response.params[6].toInt(),
-            completed_challenges = response.params[7].toInt()
+            steps_count = response.params[4].toInt(),
+            calorie_count = response.params[5].toInt(),
+            water_count = response.params[6].toInt(),
+            workouts_count = response.params[7].toInt(),
+            completed_challenges = response.params[8].toInt()
         )
     } catch (e: Exception) {
         logger.error("Error parsing daily stats: ${e.message}")
@@ -312,6 +315,7 @@ private fun parseDailyStatsResponse(response: DataPayload): DailyStatsResponse {
             date = "error",
             level = 0,
             xp = 0,
+            steps_count = 0,
             calorie_count = 0,
             water_count = 0,
             workouts_count = 0,
