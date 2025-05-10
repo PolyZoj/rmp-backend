@@ -1,3 +1,3 @@
-rootProject.name = "stats-service"
+rootProject.name = "stats"
 
 includeBuild("../common")

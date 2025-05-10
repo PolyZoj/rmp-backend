@@ -95,6 +95,7 @@ class StatsReaderDaily(
             dateString,
             statsMap.getInt("level"),
             statsMap.getInt("xp"),
+            statsMap.getInt("steps"),
             statsMap.getInt("calorie"),
             statsMap.getInt("water"),
             statsMap.getInt("workout"),

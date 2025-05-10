@@ -66,11 +66,14 @@ fun consumerConfig(groupId: String): Properties {
     }
 }
 
+fun env(name: String): String =
+    System.getenv(name) ?: throw IllegalStateException("Missing env $name")
+
 fun Application.module() {
     val connection = DriverManager.getConnection(
         "jdbc:clickhouse://clickhouse:8123/default",
-        "default",
-        ""
+        env("CLICKHOUSE_USER"),
+        env("CLICKHOUSE_PASSWORD")
     )
 
     val writeProducer = KafkaProducer<String, String>(producerConfig())

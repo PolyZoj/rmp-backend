@@ -1,3 +1,3 @@
-rootProject.name = "polyZoj"
+rootProject.name = "stats-interface"
 
 includeBuild("../common")
