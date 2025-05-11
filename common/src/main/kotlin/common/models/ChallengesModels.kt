@@ -29,7 +29,7 @@ data class Achievement(
     val icon: String,
     val description: String,
     val title: String,
-    val status: AchievementStatus,
+    val status: AchievementStatus = AchievementStatus.IN_PROGRESS,
     val goal: Double,
     val type: AchievementType,
     @SerialName("start_date") @Serializable(with = LocalDateSerializer::class)   val startDate: LocalDate,

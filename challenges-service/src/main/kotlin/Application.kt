@@ -8,6 +8,7 @@ import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
 import common.models.Achievement
 import common.models.AchievementStatus
+import common.models.AchievementType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
@@ -157,6 +158,64 @@ fun Application.module() {
                 }
 
                 handleAchievementsRequest(data, conversationId, userId)
+            }
+
+            "createAchievement" -> {
+                var achievement: Achievement?
+                try {
+                    achievement = Achievement(
+                        userId = data.getParam<String>("user_id")!!,
+                        icon = data.getParam<String>("icon")!!,
+                        description = data.getParam<String>("description")!!,
+                        title = data.getParam<String>("title")!!,
+                        status = data.getParam<AchievementStatus>("status")!!,
+                        goal = data.getParam<Double>("goal")!!,
+                        type = data.getParam<AchievementType>("type")!!,
+                        startDate = data.getParam<LocalDate>("start_date")!!,
+                        endDate = data.getParam<LocalDate>("end_date")!!
+                    )
+                } catch (e: Exception) {
+                    val msg = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Could not create achievement: ${e.message}",
+                    )
+                    producerService.send("challenges-gateway-responses", conversationId, msg)
+                    return@startConsuming
+                }
+                val dataPayload = DataPayload.build("createAchievement") {
+                    param("achievement", achievement)
+                }
+
+                val future = CompletableFuture<DataPayload>()
+                pendingResponses[conversationId] = future
+
+                producerService.send("challenges-requests", conversationId, dataPayload)
+
+                future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
+                    if (error != null || response.params.isEmpty() || response.message == "error") {
+                        log.warn("Received from challenges-interface: $response")
+                        val msg = if (response.message == "error") {
+                            response
+                        } else {
+                            DataPayload.error(
+                                status = HttpStatusCode.InternalServerError,
+                                description = "Error from challenges-interface",
+                            )
+                        }
+                        producerService.send("challenges-gateway-responses", conversationId, msg)
+                        return@whenComplete
+                    }
+
+                    log.info("Received from challenges-interface: $response")
+                    val ach = response.getParam<Achievement>("achievement")
+                    producerService.send(
+                        "challenges-gateway-responses",
+                        conversationId,
+                        DataPayload.build("success") {
+                            param("achievement", ach)
+                        }
+                    )
+                }
             }
 
             else -> {

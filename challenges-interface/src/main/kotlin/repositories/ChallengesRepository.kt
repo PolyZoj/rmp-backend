@@ -116,24 +116,30 @@ class ChallengesRepository {
     }
 
     /** Add achievement **/
-    suspend fun addAchievement(achievement: Achievement) {
+    suspend fun addAchievement(achievement: Achievement): Achievement? {
         log.debug("Entering addAchievement with achievement: {}", achievement)
 
-        DatabaseFactory.write {
-            AchievementsTable.insert {
-                it[AchievementsTable.userId] = achievement.userId.toInt()
-                it[AchievementsTable.icon] = achievement.icon
-                it[AchievementsTable.description] = achievement.description
-                it[AchievementsTable.title] = achievement.title
-                it[AchievementsTable.status] = achievement.status
-                it[AchievementsTable.goal] = achievement.goal
-                it[AchievementsTable.type] = achievement.type
-                it[AchievementsTable.startDate] = achievement.startDate
-                it[AchievementsTable.endDate] = achievement.endDate
+        val inserted: ResultRow? = try {
+            DatabaseFactory.write {
+                AchievementsTable.insert {
+                    it[AchievementsTable.userId]      = achievement.userId.toInt()
+                    it[AchievementsTable.icon]        = achievement.icon
+                    it[AchievementsTable.description] = achievement.description
+                    it[AchievementsTable.title]       = achievement.title
+                    it[AchievementsTable.status]      = achievement.status
+                    it[AchievementsTable.goal]        = achievement.goal
+                    it[AchievementsTable.type]        = achievement.type
+                    it[AchievementsTable.startDate]   = achievement.startDate
+                    it[AchievementsTable.endDate]     = achievement.endDate
+                }.resultedValues?.firstOrNull()
             }
+        } catch (e: Exception) {
+            log.error("Failed to insert achievement", e)
+            null
         }
 
-        redis.del("achievementsOf:userId:${achievement.userId}")
+        if (inserted != null) redis.del("achievementsOf:userId:${achievement.userId}")
+        return inserted?.rowToAchievement()
     }
 
 

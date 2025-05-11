@@ -162,12 +162,32 @@ fun Application.module() {
                 }
             }
 
-            // not needed for now
-//            "createAchievement" -> {
-//                log.info("createAchievement command received, data: $data")
-//                val userId = data.getParam<String>("user_id")
-//                val achievement = data.getParam<Achievement>("achievement")
-//            }
+            "createAchievement" -> {
+                log.info("createAchievement command received, data: $data")
+                val achievement = data.getParam<Achievement>("achievement")
+
+                if (achievement == null) {
+                    val err = DataPayload.error(
+                        status = HttpStatusCode.BadRequest,
+                        description = "Missing required achievement"
+                    )
+                    producerService.send("challenges-responses", conversationId, err)
+                } else {
+                    val ach = challengesRepository.addAchievement(achievement)
+                    val payload = if (ach != null) {
+                        DataPayload.build("success") {
+                            param("achievement", ach)
+                        }
+                    } else {
+                        DataPayload.error(
+                            status      = HttpStatusCode.InternalServerError,
+                            description = "Could not create achievement"
+                        )
+                    }
+
+                    producerService.send("challenges-responses", conversationId, payload)
+                }
+            }
 
             else -> {
                 val err = DataPayload.error(

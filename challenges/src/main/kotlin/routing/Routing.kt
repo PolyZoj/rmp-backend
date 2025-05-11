@@ -20,11 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.floatOrNull
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.Logger
@@ -163,6 +160,39 @@ fun Application.configureRouting() {
                             ::handleSuccessfulResponse
                         )
                     }
+
+                    post("/add") {
+                        log.info("POST /achievements/add")
+                        val userId = verifyJWTandGetUserId(call)
+                            ?: return@post call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        val text = call.receiveText()
+                        val json = Json.parseToJsonElement(text).jsonObject
+
+                        val requestPayload = DataPayload.build("createAchievement") {
+                            param("user_id", userId) // is not in body
+                            param("icon", json["icon"]?.jsonPrimitive?.content)
+                            param("description", json["description"]?.jsonPrimitive?.content)
+                            param("title", json["title"]?.jsonPrimitive?.content)
+
+                            // can be null, will create IN_PROGRESS as default
+                            param("status", json["status"]?.jsonPrimitive?.contentOrNull) // see `common.models.ChallengesModels.AchievementStatus`
+                            param("goal", json["goal"]?.jsonPrimitive?.content)
+                            param("type", json["type"]?.jsonPrimitive?.content) // see `common.models.ChallengesModels.AchievementType`
+                            param("start_date", json["start_date"]?.jsonPrimitive?.content)
+                            param("end_date", json["end_date"]?.jsonPrimitive?.content)
+                        }
+
+                        log.info("sending request to challenges-gateway-requests: {}", requestPayload)
+                        reqProcessor.processRequest(
+                            requestPayload,
+                            "challenges-gateway-requests",
+                            call,
+                            kafkaProducer,
+                            pendingResponses,
+                            mutex,
+                            ::handleSuccessfulResponse
+                        )
+                    }
                 }
             }
         }
@@ -191,9 +221,14 @@ private suspend fun handleSuccessfulResponse(
             result.params
         )
 
+        "createAchievement" -> call.respond(
+            HttpStatusCode.OK,
+            result.params
+        )
+
         else -> call.respond(
             HttpStatusCode.InternalServerError,
-            mapOf("error" to "Unknown operation type")
+            mapOf("error" to "Unknown operation type: $operation")
         )
     }
 }
