@@ -446,15 +446,15 @@ class UserRepository {
 
         return try {
             DatabaseFactory.read {
-                FriendshipsTable
-                    .selectAll()
+                FriendshipsTable.selectAll()
                     .where {
                         ((FriendshipsTable.userId eq selfId) and (FriendshipsTable.friendId eq friendId)) or
-                                ((FriendshipsTable.userId eq friendId) and (FriendshipsTable.friendId eq selfId))
-                    }
-                    .singleOrNull()
-            }
-                ?.let { row ->
+                        ((FriendshipsTable.userId eq friendId) and (FriendshipsTable.friendId eq selfId))
+                    }.singleOrNull()
+            }.let { row ->
+                if (row == null) {
+                    FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
+                } else {
                     val status = StaticLookups.nameForFriendshipStatusId(row[FriendshipsTable.friendshipStatus])
                     when (status) {
                         FriendshipStatus.ACCEPTED -> FriendshipStatusFrontEnd.YOUR_FRIEND
@@ -468,15 +468,11 @@ class UserRepository {
                         else -> FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
                     }
                 }
-                .also { result ->
-                    if (result != null) {
-                        log.info("Friendship status found: {}", result)
-                        log.debug("Setting cache for friendship status for selfId={} and friendId={}", selfId, friendId)
-                        redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", result, 600)
-                    } else {
-                        log.info("No friendship status found for selfId={} and friendId={}", selfId, friendId)
-                    }
-                }
+            }.also { result ->
+                log.info("Friendship status found: {}", result)
+                log.debug("Setting cache for friendship status for selfId={} and friendId={}", selfId, friendId)
+                redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", result, 600)
+            }
         } catch (e: Exception) {
             log.error("Error fetching friendship status for userId={} and friendId={}", selfId, friendId, e)
             null
