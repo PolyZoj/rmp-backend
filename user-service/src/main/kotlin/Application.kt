@@ -495,13 +495,13 @@ fun Application.module() {
                 )
             }
 
-            /** Needs userId, find-username String, returns possible-friend List<UserBasicInfo> */
+            /** Needs userId, find_username String, returns possible-friend List<UserBasicInfo> */
             "findFriend" -> {
-                val findUsername = data.getParam<String>("find-username")
+                val findUsername = data.getParam<String>("find_username")
                 if (findUsername == null) {
                     val msg = DataPayload.error(
                         status = HttpStatusCode.BadRequest,
-                        description = "Not found find-username in request"
+                        description = "Not found find_username in request"
                     )
                     producerService.send("user-gateway-responses", conversationId, msg)
                     return@startConsuming

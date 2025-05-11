@@ -429,7 +429,7 @@ fun Application.module() {
             "findFriend" -> {
                 log.info("Find friend, data: $data")
                 val userId = data.getParam<String>("user_id")
-                val searchString = data.getParam<String>("find-username")
+                val searchString = data.getParam<String>("find_username")
                 if (userId == null || searchString == null) {
                     val err = DataPayload.error(
                         status = HttpStatusCode.BadRequest,
