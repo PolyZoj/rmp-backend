@@ -739,6 +739,7 @@ class UserRepository {
                     it[UsersTable.clubId] = clubId
                 }
             }
+            redis.del("userDTOOf:userId:$userId")
             true
         } catch (e: Exception) {
             log.error("Error updating club ID for userId={}", userId, e)
