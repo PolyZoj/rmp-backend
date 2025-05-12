@@ -268,6 +268,47 @@ fun Application.configureRouting() {
                         )
                     }
                 }
+
+                post("/workout") {
+
+                    logger.info("Good")
+
+                    val requestId = UUID.randomUUID().toString()
+                    val request = call.receive<AddWorkoutRequest>()
+
+                    val payload = DataPayload(
+                        message = "add_workout",
+                        params = listOf(
+                            request.id,
+                            request.type,
+                            request.timeInSeconds
+                        )
+                    )
+
+                    producerWrite.send(ProducerRecord(
+                        "stats-req-write",
+                        requestId,
+                        json.encodeToString(payload)
+                    ))
+
+                    val response = withTimeoutOrNull(5000) {
+                        CompletableDeferred<DataPayload>().apply {
+                            responses[requestId] = this
+                        }.await()
+                    }
+
+                    when {
+                        response == null -> call.respond(
+                            HttpStatusCode.GatewayTimeout,
+                            DataPayload("timeout", emptyList())
+                        )
+                        response.message == "success" -> call.respond(response)
+                        else -> call.respond(
+                            HttpStatusCode.InternalServerError,
+                            response
+                        )
+                    }
+                }
             }
         }
     }

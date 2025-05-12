@@ -22,6 +22,14 @@ data class AddStatsRequest(
 )
 
 @Serializable
+data class AddWorkoutRequest(
+    val id: String,
+    val type: String,
+    val timeInSeconds: String
+)
+
+
+@Serializable
 data class DataPayload(
     val message: String,
     val params: List<String>
