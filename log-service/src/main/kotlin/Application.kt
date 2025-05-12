@@ -1,6 +1,5 @@
 package ru.polyZoj
 
-import common.LogPayload
 import common.kafka.KafkaConfig
 import common.kafka.KafkaConsumerService
 import common.kafka.createKafkaConsumer
@@ -46,13 +45,11 @@ fun Application.module() {
         logger.info("Received log request: $message")
 
         try {
-            val logPayload = Json.decodeFromString<LogPayload>(message)
-
             DBFactory.insertLog(
-                serviceName = logPayload.serviceName,
-                level = logPayload.level,
-                message = logPayload.logMessage,
-                context = logPayload.context
+                serviceName = message.getParam<String>("serviceName")!!,
+                level = message.getParam<String>("level")!!,
+                message = message.getParam<String>("logMessage")!!,
+                context = message.getParam<String>("context")!!
             )
             logger.info("Log successfully inserted into the database")
         } catch (e: Exception) {
