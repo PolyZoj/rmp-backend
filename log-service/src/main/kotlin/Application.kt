@@ -3,6 +3,7 @@ package ru.polyZoj
 import common.kafka.KafkaConfig
 import common.kafka.KafkaConsumerService
 import common.kafka.createKafkaConsumer
+import common.kafka.topics.LOG_REQ
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -21,7 +22,6 @@ fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
-
 fun Application.module() {
     val logger = getLogger<Application>()
 
@@ -37,10 +37,9 @@ fun Application.module() {
     DBFactory.init(config)
 
     val kafkaConfig = KafkaConfig()
-    val logTopicName = "log-requests"
-    kafkaConfig.createTopicIfNotExists(logTopicName, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(LOG_REQ, 1, 3.toShort())
 
-    val logConsumer = KafkaConsumerService(createKafkaConsumer("log-service-consumer"), listOf(logTopicName))
+    val logConsumer = KafkaConsumerService(createKafkaConsumer("log-service-consumer"), listOf(LOG_REQ))
     logConsumer.startConsuming { conversationId, message ->
         logger.info("Received log request: $message")
 
