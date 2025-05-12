@@ -7,3 +7,6 @@ const val USER_GATEWAY_RES = "user-gateway-responses"
 
 const val USER_SERVICE_REQ = "user-requests"
 const val USER_SERVICE_RES = "user-responses"
+
+const val AUTH_REQ = "auth-requests"
+const val AUTH_RES = "auth-responses"

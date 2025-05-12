@@ -8,7 +8,7 @@ class DataSourceConfig {
 
     init {
         dataSource = HikariDataSource(HikariConfig().apply {
-            jdbcUrl = "jdbc:clickhouse://${env("CLICKHOUSE_HOST")}:${env("CLICKHOUSE_PORT")}/default"
+            jdbcUrl = "jdbc:clickhouse:https//bwa8rh8b3t.eu-west-1.aws.clickhouse.cloud:8443?user=default&password=8ofIoTG_z7TSg&ssl=true"
             driverClassName = "com.clickhouse.jdbc.ClickHouseDriver"
             maximumPoolSize = 10
             isAutoCommit = true

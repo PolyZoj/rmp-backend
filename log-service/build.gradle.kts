@@ -32,7 +32,7 @@ dependencies {
     implementation(libs.exposed.java.time)
     implementation("io.ktor:ktor-server-config-yaml:2.3.7")
 
-    implementation("com.clickhouse:clickhouse-jdbc:0.8.2")
+    implementation("com.clickhouse:clickhouse-jdbc:0.8.5")
 
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.serialization.json)

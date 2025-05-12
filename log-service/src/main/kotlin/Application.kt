@@ -40,7 +40,10 @@ fun Application.module() {
     kafkaConfig.createTopicIfNotExists(LOG_REQ, 1, 3.toShort())
 
     val logConsumer = KafkaConsumerService(createKafkaConsumer("log-service-consumer"), listOf(LOG_REQ))
+    logger.info("Starting")
+
     logConsumer.startConsuming { conversationId, message ->
+        logger.info("Consuming conversationId: $conversationId")
         logger.info("Received log request: $message")
 
         try {
