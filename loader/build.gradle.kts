@@ -26,3 +26,13 @@ tasks.test {
 kotlin {
     jvmToolchain(20)
 }
+
+tasks.register("downloadDependencies") {
+    doLast {
+        configurations
+            .filter { it.isCanBeResolved }
+            .forEach { configuration ->
+                configuration.resolve()
+            }
+    }
+}
