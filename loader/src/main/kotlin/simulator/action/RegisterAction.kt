@@ -11,6 +11,6 @@ class RegisterAction(private val client: HttpClient) {
             contentType(ContentType.Application.Json)
             setBody(credentials.toRegisterPayload())
         }
-        return response.status == HttpStatusCode.Created
+        return response.status == HttpStatusCode.OK
     }
 }
