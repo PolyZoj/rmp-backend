@@ -11,6 +11,9 @@ import java.sql.PreparedStatement
 import java.util.*
 import java.sql.Timestamp
 import java.time.Instant
+import common.Level
+import common.LogSender
+import common.kafka.createKafkaProducer
 
 object WriteEvents {
     const val TABLE_NAME = "default.user_stats"
@@ -21,7 +24,7 @@ object WriteEvents {
     """
 }
 
-class StatsWriter(
+public class StatsWriter(
     private val connection: Connection,
     private val producer: KafkaProducer<String, String>
 ) {
@@ -29,6 +32,19 @@ class StatsWriter(
     private val insertStmt: PreparedStatement by lazy {
         connection.prepareStatement(WriteEvents.INSERT_SQL)
     }
+
+    val kafkaProducer = createKafkaProducer()
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("stats-interface", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload, topic: String) =
+        log(Level.INFO, "Sending request to $topic: $payload", context)
 
     companion object {
         const val CALORIES_PER_MINUTE_EASY = 5.0
@@ -39,6 +55,9 @@ class StatsWriter(
 
     fun processWriteEvent(key: String, value: String) {
         try {
+
+            logRequest("Stats write $key")
+
             val payload = json.decodeFromString<DataPayload>(value)
 
             if (payload.params.size != 3) {
@@ -72,7 +91,7 @@ class StatsWriter(
         }
     }
 
-    private fun parseEvents(
+    internal fun parseEvents(
         userId: String,
         messageType: String,
         type: String,
@@ -135,7 +154,7 @@ class StatsWriter(
         }
     }
 
-    private data class Event(
+    internal data class Event(
         val userId: String,
         val type: String,
         val value: Double
@@ -149,7 +168,7 @@ class StatsWriter(
         ))
     }
 
-    private fun sendError(key: String, error: String) {
+    internal fun sendError(key: String, error: String) {
         producer.send(ProducerRecord(
             "stats-resp-write",
             key,

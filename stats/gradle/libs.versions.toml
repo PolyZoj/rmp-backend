@@ -2,7 +2,6 @@
 [versions]
 kotlin-version = "2.1.20"
 ktor-version = "3.1.2"
-logback-version = "1.5.13"
 
 [libraries]
 ktor-simple-cache = { module = "com.ucasoft.ktor:ktor-simple-cache", version = "0.53.4" }
@@ -12,7 +11,6 @@ ktor-server-cors = { module = "io.ktor:ktor-server-cors", version.ref = "ktor-ve
 ktor-server-auth = { module = "io.ktor:ktor-server-auth", version.ref = "ktor-version" }
 ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt", version.ref = "ktor-version" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor-version" }
-logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback-version" }
 ktor-server-config-yaml = { module = "io.ktor:ktor-server-config-yaml", version.ref = "ktor-version" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor-version" }
 kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin-version" }

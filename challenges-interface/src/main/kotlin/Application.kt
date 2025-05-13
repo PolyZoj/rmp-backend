@@ -7,15 +7,16 @@ import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 import common.DataPayload
+import common.Level
+import common.LogSender
 import ru.polyZoj.db.*
 import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import common.kafka.topics.*
 import common.models.Achievement
 import io.ktor.http.HttpStatusCode
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import ru.polyZoj.repositories.AchievementFactory
 import ru.polyZoj.repositories.ChallengesRepository
 import ru.polyZoj.repositories.getDailyAchievements
@@ -27,8 +28,6 @@ fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
-inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
-
 fun Application.module() {
 
     install(ContentNegotiation) {
@@ -38,19 +37,20 @@ fun Application.module() {
             ignoreUnknownKeys = true
         })
     }
-
-    val log = logger<Application>()
-
     val ds = DataSourceConfig()
     DatabaseFactory.init(ds)
 
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
 
-    val kafkaConsumer = createKafkaConsumer("challenges-interface-consumer")
-    val consumerService = KafkaConsumerService(kafkaConsumer, listOf("challenges-requests"))
+    val logger = LogSender(kafkaProducer)
+    fun logInfo(ctx: String, msg: String) =  logger.log("challenges-interface", Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = logger.log("challenges-interface", Level.ERROR, msg, ctx)
 
-    val challengesRepository = ChallengesRepository()
+    val kafkaConsumer = createKafkaConsumer("challenges-interface-consumer")
+    val consumerService = KafkaConsumerService(kafkaConsumer, listOf(CHALLENGES_SERVICE_REQ))
+
+    val challengesRepository = ChallengesRepository(logger)
 
     fun populateAchievements(userId: String, achievements: List<Achievement>): List<Achievement> {
         val newAchs: MutableList<Achievement> = emptyList<Achievement>().toMutableList()
@@ -80,19 +80,17 @@ fun Application.module() {
     }
 
     consumerService.startConsuming { conversationId, data ->
-        log.info("Received message: $data")
         val command = data.message
+        logInfo(command, "Received: $data")
         when (command) {
 
             "achievementsAll" -> {
-                log.info("achievementsAll command received, data: $data")
                 val userId = data.getParam<String>("user_id")
-                if (userId == null) {
-                    val err = DataPayload.error(
+                val resp = if (userId == null) {
+                    DataPayload.error(
                         status = HttpStatusCode.BadRequest,
                         description = "Missing required user ID"
                     )
-                    producerService.send("challenges-responses", conversationId, err)
                 } else {
                     val achievements = challengesRepository.getAllAchievements(userId.toInt())
                     val newAchs = populateAchievements(userId, achievements)
@@ -101,52 +99,47 @@ fun Application.module() {
                     }
                     val finalList = achievements + newAchs
 
-                    val resp = DataPayload.build("success") {
+                    DataPayload.build("success") {
                         param("achievements", finalList)
                     }
-
-                    producerService.send("challenges-responses", conversationId, resp)
                 }
-
+                if (resp.message == "error") logError(command, "Error response – $resp")
+                logInfo(command, "Sending to $CHALLENGES_SERVICE_RES: $resp")
+                producerService.send(CHALLENGES_SERVICE_RES, conversationId, resp)
             }
 
             "achievementsDay" -> {
-                log.info("achievementsDay command received, data: $data")
                 val userId  = data.getParam<String>("user_id")
                 val date    = data.getParam<LocalDate>("date") ?: LocalDate.now()
-
-                if (userId == null) {
-                    val err = DataPayload.error(
+                val resp = if (userId == null) {
+                    DataPayload.error(
                         status = HttpStatusCode.BadRequest,
                         description = "Missing required user ID"
                     )
-                    producerService.send("challenges-responses", conversationId, err)
                 } else {
                     val list = challengesRepository.getAchievementsByDate(userId.toInt(), date)
 
-                    val resp = DataPayload.build("success") {
+                    DataPayload.build("success") {
                         param("achievements", list)
                     }
-                    producerService.send("challenges-responses", conversationId, resp)
                 }
-
-
+                if (resp.message == "error") logError(command, "Error response – $resp")
+                logInfo(command, "Sending to $CHALLENGES_SERVICE_RES: $resp")
+                producerService.send(CHALLENGES_SERVICE_RES, conversationId, resp)
             }
 
             "completeAchievement" -> {
-                log.info("completeAchievement command received, data: $data")
                 val achievement = data.getParam<Achievement>("achievement")
 
-                if (achievement == null) {
-                    val err = DataPayload.error(
+                val resp = if (achievement == null) {
+                    DataPayload.error(
                         status      = HttpStatusCode.BadRequest,
                         description = "Missing required achievement"
                     )
-                    producerService.send("challenges-responses", conversationId, err)
                 } else {
                     val rowsUpdated = challengesRepository.setAchievementsAsCompleted(achievement)
 
-                    val payload = if (rowsUpdated > 0) {
+                    if (rowsUpdated > 0) {
                         DataPayload.build("success") {
                             param("achievement_id", achievement.id)
                             param("status", "completed")
@@ -158,23 +151,23 @@ fun Application.module() {
                         )
                     }
 
-                    producerService.send("challenges-responses", conversationId, payload)
                 }
+                if (resp.message == "error") logError(command, "Error response – $resp")
+                logInfo(command, "Sending to $CHALLENGES_SERVICE_RES: $resp")
+                producerService.send(CHALLENGES_SERVICE_RES, conversationId, resp)
             }
 
             "createAchievement" -> {
-                log.info("createAchievement command received, data: $data")
                 val achievement = data.getParam<Achievement>("achievement")
 
-                if (achievement == null) {
-                    val err = DataPayload.error(
+                val resp = if (achievement == null) {
+                    DataPayload.error(
                         status = HttpStatusCode.BadRequest,
                         description = "Missing required achievement"
                     )
-                    producerService.send("challenges-responses", conversationId, err)
                 } else {
                     val ach = challengesRepository.addAchievement(achievement)
-                    val payload = if (ach != null) {
+                    if (ach != null) {
                         DataPayload.build("success") {
                             param("achievement", ach)
                         }
@@ -184,9 +177,10 @@ fun Application.module() {
                             description = "Could not create achievement"
                         )
                     }
-
-                    producerService.send("challenges-responses", conversationId, payload)
                 }
+                if (resp.message == "error") logError(command, "Error response – $resp")
+                logInfo(command, "Sending to $CHALLENGES_SERVICE_RES: $resp")
+                producerService.send(CHALLENGES_SERVICE_RES, conversationId, resp)
             }
 
             else -> {
@@ -194,8 +188,9 @@ fun Application.module() {
                     status = HttpStatusCode.BadRequest,
                     description = "Unknown command: $command"
                 )
-                log.error("Unknown command: $command")
-                producerService.send("challenges-responses", conversationId, err)
+                logError(command, "Error response - $err")
+                logInfo(command, "Sending to $CHALLENGES_SERVICE_RES: $err")
+                producerService.send(CHALLENGES_SERVICE_RES, conversationId, err)
             }
         }
     }

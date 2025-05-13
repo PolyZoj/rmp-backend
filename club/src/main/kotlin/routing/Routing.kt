@@ -31,6 +31,8 @@ import common.kafka.KafkaProducerService
 import common.kafka.RequestProcessor
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import common.Level
+import common.LogSender
 import io.ktor.server.auth.authenticate
 import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.principal
@@ -49,6 +51,17 @@ fun Application.configureRouting() {
     
     val kafkaProducer = createKafkaProducer()
     val producer = KafkaProducerService(kafkaProducer)
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("club", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload) =
+        log(Level.INFO, "Sending request to club-gateway-requests: $payload", context)
 
     val consumer = createKafkaConsumer("club-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
@@ -97,8 +110,8 @@ fun Application.configureRouting() {
                         param("description", request.description)
                         param("ownerId", userId)
                     }
-                    
-                    processClubRequest(payload, call, producer, responses, mutex, json)
+                    logRequest("create")
+                    processClubRequest(payload, call, producer, responses, mutex, logger)
                 }
 
                 get("/list") {     
@@ -108,7 +121,8 @@ fun Application.configureRouting() {
                         param("limit", limit.toInt())
                         param("offset", offset.toInt())
                     }
-                    processClubRequest(payload, call, producer, responses, mutex, json)
+                    logRequest("list")
+                    processClubRequest(payload, call, producer, responses, mutex, logger)
                 }
 
                 post("/{clubId}/members") {
@@ -118,7 +132,8 @@ fun Application.configureRouting() {
                         param("clubId", clubId)
                         param("userId", request.userId)
                     }
-                    processClubRequest(payload, call, producer, responses, mutex, json)
+                    logRequest("member add")
+                    processClubRequest(payload, call, producer, responses, mutex, logger)
                 }
 
                 delete("/{clubId}/members/{userId}") {
@@ -128,7 +143,8 @@ fun Application.configureRouting() {
                         param("clubId", clubId)
                         param("userId", userId)
                     }
-                    processClubRequest(payload, call, producer, responses, mutex, json)
+                    logRequest("member remove")
+                    processClubRequest(payload, call, producer, responses, mutex, logger)
                 }
 
                 get("/{clubId}") {
@@ -136,7 +152,8 @@ fun Application.configureRouting() {
                     val payload = DataPayload.build("getInfo") {
                         param("clubId", clubId)
                     }
-                    processClubRequest(payload, call, producer, responses, mutex, json)
+                    logRequest("club info")
+                    processClubRequest(payload, call, producer, responses, mutex, logger)
                 }
             }
         }
@@ -149,7 +166,7 @@ private suspend fun processClubRequest(
     producer: KafkaProducerService,
     responses: ConcurrentHashMap<String, CompletableDeferred<DataPayload>>,
     mutex: Mutex,
-    json: Json
+    logger: LogSender
 ) {
     val correlationId = UUID.randomUUID().toString()
     val responseDeferred = CompletableDeferred<DataPayload>()
@@ -162,6 +179,7 @@ private suspend fun processClubRequest(
         correlationId,
         payload
     )
+    logger.log("club", Level.INFO, "Sending request to club-gateway-requests: $payload", "club message")
     try {
         val result = withTimeoutOrNull(5000) { responseDeferred.await() }
 
@@ -180,21 +198,22 @@ private suspend fun processClubRequest(
                 )
             }
 
-            else -> handleClubResponse(result, call, json)
+            else -> handleClubResponse(result, call)
         }
     } finally {
         mutex.withLock { responses.remove(correlationId) }
     }
 }
 
-private suspend fun handleClubResponse(response: DataPayload, call: ApplicationCall, json: Json) {
+private suspend fun handleClubResponse(response: DataPayload, call: ApplicationCall) {
     when (response.message) {
-        "created" -> call.respond(
+        "created" -> {
+        call.respond(
             HttpStatusCode.Created,
             ClubCreateResponse(
                 response.getParam<String>("clubId").orEmpty()
             )
-        )
+        )}
 
         "clubsListed" -> {
             val clubs = response.getParam<List<Club>>("clubs") ?: emptyList()

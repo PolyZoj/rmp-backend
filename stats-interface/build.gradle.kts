@@ -20,18 +20,30 @@ repositories {
     mavenCentral()
 }
 
+tasks.test {
+    useJUnitPlatform() // Для JUnit 5
+    testLogging {
+        events("passed", "skipped", "failed") // Логирование результатов
+    }
+}
+
 dependencies {
     implementation("org.slf4j:slf4j-api:2.0.7")
     implementation("com.clickhouse:clickhouse-jdbc:0.4.6")
     implementation("ru.polyZoj:common")
     implementation(libs.ktor.simple.cache)
+    testImplementation("io.kotest:kotest-runner-junit5:5.8.0")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.2")
+    testImplementation("io.kotest:kotest-assertions-core:5.5.5")
+    testImplementation("io.mockk:mockk:1.13.2")
+    testImplementation("io.ktor:ktor-client-mock:2.3.3")
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.simple.redis.cache)
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.netty)
-    implementation(libs.logback.classic)
     implementation(libs.ktor.server.config.yaml)
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)

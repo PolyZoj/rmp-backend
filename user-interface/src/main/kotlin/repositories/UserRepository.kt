@@ -1,5 +1,8 @@
 package ru.polyZoj.repositories
 
+import at.favre.lib.crypto.bcrypt.BCrypt
+import common.Level
+import common.LogSender
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -13,7 +16,6 @@ import ru.polyZoj.db.*
 import common.exceptions.DuplicateFieldException
 import common.models.FriendshipStatus
 import common.models.FriendshipStatusFrontEnd
-import ru.polyZoj.logger
 import common.models.User
 import common.models.UserBasicInfo
 import common.models.UserDTO
@@ -30,8 +32,7 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaInstant
 import kotlin.time.toKotlinInstant
 
-class UserRepository {
-    private val log = logger<UserRepository>()
+class UserRepository(private val logger: LogSender) {
 
     /**
      * Cache keys:
@@ -45,17 +46,23 @@ class UserRepository {
      */
     private val redis = RedisFactory.sync
 
+    fun logInfo (ctx: String, msg: String) = logger.log("user-interface", Level.INFO,  msg, "UserRepository: $ctx")
+    fun logError(ctx: String, msg: String) = logger.log("user-interface", Level.ERROR, msg, "UserRepository: $ctx")
+    fun logDebug(ctx: String, msg: String) = logger.log("user-interface", Level.DEBUG, msg, "UserRepository: $ctx")
+    fun logWarn (ctx: String, msg: String) = logger.log("user-interface", Level.WARN,  msg, "UserRepository: $ctx")
+    fun logTrace(ctx: String, msg: String) = logger.log("user-interface", Level.TRACE, msg, "UserRepository: $ctx")
 
     /** Look up a user’s id by username */
     suspend fun findByUsername(username: String): Int? {
-        log.debug("Entering findByUsername with username='{}'", username)
+        val ctx = "findByUsername"
+        logDebug(ctx,"Entering $ctx with username={$username}")
 
         val cachedId = redis.getJson<Int>("userIdOf:username:$username")
         if (cachedId != null) {
-            log.info("User ID found in cache for username='{}'", username)
+            logInfo(ctx, "HIT: Found id=${cachedId} of $username in cache")
             return cachedId
         } else {
-            log.debug("No user ID found in cache for username='{}'", username)
+            logWarn(ctx, "MISS: id of $username not found in cache")
         }
 
         val result: Int? = DatabaseFactory.read {
@@ -66,24 +73,25 @@ class UserRepository {
                 .singleOrNull()
         }
         if (result != null) {
-            log.info("User found for username='{}', userId={} ", username, result)
-            log.debug("Setting cache for userIdOf:username='{}'", username)
+            logInfo(ctx, "Found id=${result} of $username in database")
+            logDebug(ctx, "Setting cache for userIdOf:username:$username")
             redis.setJson("userIdOf:username:$username", result, 600)
         } else {
-            log.info("No user found for username='{}'", username)
+            logError(ctx, "User not found in database")
         }
         return result
     }
 
     suspend fun findUsernameById(userId: Int): String? {
-        log.debug("Entering findUsernameById with userId={}", userId)
+        val ctx = "findUsernameById"
+        logDebug(ctx, "Entering $ctx with userId={$userId}")
 
         val cachedUsername = redis.getJson<String>("usernameOf:userId:$userId")
         if (cachedUsername != null) {
-            log.info("Username found in cache for userId={}", userId)
+            logInfo(ctx, "HIT: Found username=${cachedUsername} of id=$userId in cache")
             return cachedUsername
         } else {
-            log.debug("No username found in cache for userId={}", userId)
+            logWarn(ctx, "MISS: username of userId=$userId not found in cache")
         }
 
         val result = DatabaseFactory.read {
@@ -94,57 +102,67 @@ class UserRepository {
                 .singleOrNull()
         }
         if (result != null) {
-            log.info("Username found for userId={}, username='{}'", userId, result)
-            log.debug("Setting cache for usernameOf:userId={}", userId)
+            logInfo(ctx, "Found username=${result} of id=$userId in database")
+            logDebug(ctx, "Setting cache for usernameOf:userId:$userId")
             redis.setJson("usernameOf:userId:$userId", result, 600)
         } else {
-            log.info("No username found for userId={}", userId)
+            logError(ctx, "Username not found in database for id=$userId")
         }
         return result
     }
 
     /** Return userId if credentials match **/
     suspend fun login(username: String, password: String): Int? {
-        log.debug("Attempting login for username='{}'", username)
-
-        val cachedUsername = redis.getJson<String>("usernameOf:username:$username")
-        val cachedPassword = redis.getJson<String>("passwordOf:password")
+        val ctx = "login"
+        logDebug(ctx, "Entering $ctx with username={$username}")
         val cachedId = redis.getJson<Int>("userIdOf:username:$username")
+        val cachedUsername = redis.getJson<String>("usernameOf:userId:$cachedId")
+        val cachedPassword = redis.getJson<String>("passwordOf:userId:$cachedId")
+
         if (cachedUsername != null && cachedPassword != null && cachedId != null) {
-            log.info("Credentials found in cache for username='{}'", username)
-            if (cachedUsername == username && cachedPassword == password) {
-                log.info("Login successful for username='{}'", username)
+            logInfo(ctx, "HIT: Found credentials in cache for $username")
+            if (cachedUsername == username && verifyPassword(password, cachedPassword)) {
+                logInfo(ctx, "Login successful for $username using cache (userId=$cachedId)")
                 return cachedId
             } else {
-                log.warn("Invalid credentials found in cache for username='{}'", username)
+                logWarn(ctx, "Invalid cached credentials for $username")
             }
         } else {
-            log.debug("No credentials found in cache for username='{}'", username)
+            logWarn(ctx, "MISS: Credentials for $username not found in cache")
         }
 
         val userId: Int? = DatabaseFactory.read {
-            UserCredentialsTable.select(UserCredentialsTable.userId)
-                .where { (UserCredentialsTable.username eq username) and (UserCredentialsTable.password eq password) }
+            UserCredentialsTable.select(UserCredentialsTable.userId, UserCredentialsTable.password)
+                .where { (UserCredentialsTable.username eq username) }
                 .limit(1)
-                .map { it[UserCredentialsTable.userId].value }
+                .map {
+                    if (verifyPassword(password, it[UserCredentialsTable.password])) it[UserCredentialsTable.userId].value
+                    else null
+                }
                 .singleOrNull()
         }
+
         if (userId != null) {
-            log.info("Login successful for username='{}', userId={}", username, userId)
-            log.debug("Setting caches for userId={}", userId)
+            logInfo(ctx, "Login successful for $username in database (userId=$userId)")
+            logDebug(ctx, "Setting caches for userId=$userId")
             redis.setJson("userIdOf:username:$username", userId, 600)
             redis.setJson("usernameOf:userId:$userId", username, 600)
             redis.setJson("passwordOf:userId:$userId", password, 600)
         } else {
-            log.info("Login failed for username='{}'", username)
+            logError(ctx, "Login failed for $username – credentials not found in database")
         }
         return userId
     }
 
+    private val bcryptVerifier = BCrypt.verifyer()
+    fun verifyPassword(plain: String, hashed: String): Boolean =
+        bcryptVerifier.verify(plain.toCharArray(), hashed).verified
+
     /** Create a brand‐new user (all tables) and return their new user_id */
     @OptIn(ExperimentalTime::class)
     suspend fun createUser(reg: UserRegistration): Int {
-        log.debug("Registering new user: username='{}'", reg.username)
+        val ctx = "createUser"
+        logDebug(ctx, "Entering $ctx with username={${reg.username}}")
         try {
             val newUserId = DatabaseFactory.write {
                 // 1) users
@@ -157,7 +175,7 @@ class UserRepository {
                         it[UsersTable.isAdmin] = false
                         it[UsersTable.createdAt] = Clock.System.now().toJavaInstant()
                     }.value
-                log.debug("Inserted into UsersTable, userId={}", userId)
+                logDebug(ctx, "Inserted into UsersTable (userId=$userId)")
 
                 // 2) credentials
                 UserCredentialsTable.insert {
@@ -165,7 +183,7 @@ class UserRepository {
                     it[UserCredentialsTable.username] = reg.username
                     it[UserCredentialsTable.password] = reg.password
                 }
-                log.debug("Inserted into UserCredentialsTable for userId={}", userId)
+                logDebug(ctx, "Inserted into UserCredentialsTable (userId=$userId)")
 
                 val unitSystemId   = StaticLookups.idFor(reg.unitSystem)
                 val energySystemId = StaticLookups.idFor(reg.energySystem)
@@ -178,7 +196,7 @@ class UserRepository {
                     it[UserParametersTable.birthDate] = reg.birthDate
                     it[UserParametersTable.unitSystemId] = unitSystemId
                 }
-                log.debug("Inserted into UserParametersTable for userId={}", userId)
+                logDebug(ctx, "Inserted into UserParametersTable (userId=$userId)")
 
                 // get the health goal id or add it
                 var healthGoalId: Int? = null
@@ -192,7 +210,7 @@ class UserRepository {
                         ?: PrimaryHealthGoalsTable.insert {
                             it[PrimaryHealthGoalsTable.goalName] = healthGoal
                         }[PrimaryHealthGoalsTable.healthGoalId]
-                    log.debug("Inserted into PrimaryHealthGoalsTable for userId={}", userId)
+                    logTrace(ctx, "Inserted/Found PrimaryHealthGoalsTable row (userId=$userId)")
                 }
 
                 // 4) preferences
@@ -207,28 +225,28 @@ class UserRepository {
                     it[UserPreferencesTable.sleepGoal] = reg.sleepGoal
                     it[UserPreferencesTable.workoutsGoal] = reg.workoutsGoal
                 }
-                log.debug("Inserted into UserPreferencesTable for userId={}", userId)
+                logDebug(ctx, "Inserted into UserPreferencesTable (userId=$userId)")
                 userId
             }
 
-            log.debug("Setting caches for userId={}", newUserId)
+            logDebug(ctx, "Setting caches for userId=$newUserId")
             redis.setJson("usernameOf:userId:${newUserId}", reg.username, 600)
             redis.setJson("userIdOf:username:${reg.username}", newUserId, 600)
             redis.setJson("passwordOf:userId:${newUserId}", reg.password, 600)
             redis.del("allIds")
-            log.info("User registered successfully with userId={}", newUserId)
+            logInfo(ctx, "User registered successfully (userId=$newUserId)")
             return newUserId
         } catch (e: ExposedSQLException) {
-            log.error("Error registering user: username='{}'\nerror={}", reg.username, e.message)
+            logError(ctx, "Error registering user '${reg.username}': ${e.message}")
             if (e.cause is PSQLException && (e.cause as PSQLException).sqlState == "23505") {
                 val msg = e.cause!!.message ?: ""
                 when {
                     "users_email_key" in msg -> {
-                        log.warn("Duplicate email during registration: {}", reg.email)
+                        logWarn(ctx, "Duplicate email during registration: ${reg.email}")
                         throw DuplicateFieldException("email")
                     }
                     "users_credentials_user_name_key" in msg -> {
-                        log.warn("Duplicate username during registration: {}", reg.username)
+                        logWarn(ctx, "Duplicate username during registration: ${reg.username}")
                         throw DuplicateFieldException("username")
                     }
                 }
@@ -240,101 +258,80 @@ class UserRepository {
     /** Get userDTO by userId */
     @OptIn(ExperimentalTime::class)
     suspend fun getUserDTO(userId: Int): UserDTO? {
-        log.debug("Fetching UserDTO for userId={}", userId)
+        val ctx = "getUserDTO"
+        logDebug(ctx, "Entering $ctx with userId={$userId}")
 
         val cachedUserDTO = redis.getJson<UserDTO>("userDTOOf:userId:$userId")
         if (cachedUserDTO != null) {
-            log.info("UserDTO found in cache for userId={}", userId)
+            logInfo(ctx, "HIT: Found UserDTO of id=$userId in cache")
             return cachedUserDTO
         } else {
-            log.debug("No UserDTO found in cache for userId={}", userId)
+            logWarn(ctx, "MISS: UserDTO of id=$userId not found in cache")
         }
 
         val userDTO: UserDTO? = try {
             DatabaseFactory.read {
-                log.debug("Joining tables to fetch UserDTO for userId={}", userId)
-                try {
-                    UsersTable
-                        .innerJoin(UserCredentialsTable)
-                        .innerJoin(UserParametersTable)
-                        .innerJoin(UserPreferencesTable)
-                        .join(UnitSystemsTable,
-                            onColumn = UserParametersTable.unitSystemId,
-                            otherColumn = UnitSystemsTable.unitSystemId,
-                            joinType = JoinType.INNER
-                        )
-                        .innerJoin(EnergySystemsTable)
-                        .leftJoin(PrimaryHealthGoalsTable) // leftJoin so missing healthGoal → null
-                        .selectAll()
-                        .where { UsersTable.id eq userId }
-                        .limit(1)
-                        .map { row ->
-                            try {
-                                UserDTO(
-                                    user = User(
-                                        userId    = row[UsersTable.id].value,
-                                        firstName = row[UsersTable.firstName],
-                                        lastName  = row[UsersTable.lastName],
-                                        email     = row[UsersTable.email],
-                                        avatarUrl = row[UsersTable.avatarUrl],
-                                        isAdmin   = row[UsersTable.isAdmin],
-                                        createdAt = row[UsersTable.createdAt].toKotlinInstant(),
-                                        clubId = row[UsersTable.clubId],
-                                    ),
-                                    username        = row[UserCredentialsTable.username],
-                                    weight          = row[UserParametersTable.weight],
-                                    height          = row[UserParametersTable.height],
-                                    birthDate       = row[UserParametersTable.birthDate],
-                                    unitSystem      = row[UnitSystemsTable.systemName],
-                                    energySystem    = row[EnergySystemsTable.systemName],
-                                    healthGoal      = row[PrimaryHealthGoalsTable.goalName],       // nullable
-                                    dailyStepGoal   = row[UserPreferencesTable.dailyStepGoal],
-                                    waterIntakeGoal = row[UserPreferencesTable.waterIntakeGoal],
-                                    calorieGoal     = row[UserPreferencesTable.calorieGoal],
-                                    sleepGoal       = row[UserPreferencesTable.sleepGoal],
-                                    workoutsGoal    = row[UserPreferencesTable.workoutsGoal]
-                                )
-                            } catch (dtoEx: Exception) {
-                                log.error(
-                                    "Failed to map ResultRow → UserDTO for userId={}",
-                                    userId,
-                                    dtoEx
-                                )
-                                throw dtoEx
-                            }
-                        }
-                        .singleOrNull()
-                } catch (sqlOrMapEx: Exception) {
-                    log.error(
-                        "Error fetching or building UserDTO for userId={}",
-                        userId,
-                        sqlOrMapEx
+                UsersTable
+                    .innerJoin(UserCredentialsTable)
+                    .innerJoin(UserParametersTable)
+                    .innerJoin(UserPreferencesTable)
+                    .join(UnitSystemsTable,
+                        onColumn = UserParametersTable.unitSystemId,
+                        otherColumn = UnitSystemsTable.unitSystemId,
+                        joinType = JoinType.INNER
                     )
-                    null
-                }
+                    .innerJoin(EnergySystemsTable)
+                    .leftJoin(PrimaryHealthGoalsTable)
+                    .selectAll()
+                    .where { UsersTable.id eq userId }
+                    .limit(1)
+                    .map { row ->
+                        UserDTO(
+                            user = User(
+                                userId    = row[UsersTable.id].value,
+                                firstName = row[UsersTable.firstName],
+                                lastName  = row[UsersTable.lastName],
+                                email     = row[UsersTable.email],
+                                avatarUrl = row[UsersTable.avatarUrl],
+                                isAdmin   = row[UsersTable.isAdmin],
+                                createdAt = row[UsersTable.createdAt].toKotlinInstant(),
+                                clubId = row[UsersTable.clubId],
+                            ),
+                            username        = row[UserCredentialsTable.username],
+                            weight          = row[UserParametersTable.weight],
+                            height          = row[UserParametersTable.height],
+                            birthDate       = row[UserParametersTable.birthDate],
+                            unitSystem      = row[UnitSystemsTable.systemName],
+                            energySystem    = row[EnergySystemsTable.systemName],
+                            healthGoal      = row[PrimaryHealthGoalsTable.goalName],
+                            dailyStepGoal   = row[UserPreferencesTable.dailyStepGoal],
+                            waterIntakeGoal = row[UserPreferencesTable.waterIntakeGoal],
+                            calorieGoal     = row[UserPreferencesTable.calorieGoal],
+                            sleepGoal       = row[UserPreferencesTable.sleepGoal],
+                            workoutsGoal    = row[UserPreferencesTable.workoutsGoal]
+                        )
+                    }
+                    .singleOrNull()
             }
-        } catch (txEx: Exception) {
-            log.error(
-                "Transaction error when reading UserDTO for userId={}",
-                userId,
-                txEx
-            )
+        } catch (e: Exception) {
+            logError(ctx, "Error fetching UserDTO for userId=$userId: ${e.message}")
             null
         }
 
         if (userDTO != null) {
-            log.info("UserDTO fetched successfully for userId={}", userId)
-            log.debug("Setting cache for userId={}", userId)
+            logInfo(ctx, "Fetched UserDTO successfully for userId=$userId")
+            logDebug(ctx, "Setting cache for userDTOOf:userId:$userId")
             redis.setJson("userDTOOf:userId:$userId", userDTO, 600)
         } else {
-            log.info("No UserDTO found or error occurred for userId={}", userId)
+            logError(ctx, "UserDTO not found in database for userId=$userId")
         }
         return userDTO
     }
 
     /** Delete user and all related data. Returns true if any rows were deleted. */
     suspend fun deleteUser(userId: Int): Boolean {
-        log.debug("Deleting user (and cascading related rows) for userId={}", userId)
+        val ctx = "deleteUser"
+        logDebug(ctx, "Entering $ctx with userId={$userId}")
 
         return try {
             val deletedCount = DatabaseFactory.write {
@@ -342,8 +339,8 @@ class UserRepository {
             }
 
             if (deletedCount > 0) {
-                log.info("User deletion (with cascade) succeeded for userId={}", userId)
-                log.debug("Deleting user from cache for userId={}", userId)
+                logInfo(ctx, "User deletion succeeded for userId=$userId (rows=$deletedCount)")
+                logDebug(ctx, "Deleting cache for userId=$userId")
                 redis.del(
                     "userDTOOf:userId:$userId",
                     "usernameOf:userId:$userId",
@@ -354,92 +351,75 @@ class UserRepository {
                 )
                 true
             } else {
-                log.warn("No user found to delete for userId={}", userId)
+                logError(ctx, "User not found to delete for userId=$userId")
                 false
             }
         } catch (e: Exception) {
-            log.error("Failed to delete user data for userId={}", userId, e)
+            logError(ctx, "Failed to delete user data for userId=$userId: ${e.message}")
             false
         }
     }
 
     /** Update user data. Returns true if any rows were updated. */
     suspend fun updateUser(userId: Int, userUpdatable: UserUpdatable): Boolean {
-        log.debug("Updating user data for userId={}", userId)
+        val ctx = "updateUser"
+        logDebug(ctx, "Entering $ctx with userId={$userId}")
         return try {
             DatabaseFactory.write {
                 userUpdatable.avatarUrl?.let { a ->
-                    UsersTable.update({ UsersTable.id eq userId }) {
-                        it[avatarUrl] = a
-                    }
+                    UsersTable.update({ UsersTable.id eq userId }) { it[avatarUrl] = a }
                 }
                 userUpdatable.height?.let { h ->
-                    UserParametersTable.update({ UserParametersTable.userId eq userId }) {
-                        it[height] = h
-                    }
+                    UserParametersTable.update({ UserParametersTable.userId eq userId }) { it[height] = h }
                 }
                 userUpdatable.weight?.let { w ->
-                    UserParametersTable.update({ UserParametersTable.userId eq userId }) {
-                        it[weight] = w
-                    }
+                    UserParametersTable.update({ UserParametersTable.userId eq userId }) { it[weight] = w }
                 }
                 userUpdatable.healthGoal?.let { h ->
                     val healthId = PrimaryHealthGoalsTable
                         .select(PrimaryHealthGoalsTable.goalName eq h)
                         .map { it[PrimaryHealthGoalsTable.healthGoalId] }
                         .singleOrNull()
-                        ?: PrimaryHealthGoalsTable.insert {
-                            it[goalName] = h
-                        }[PrimaryHealthGoalsTable.healthGoalId]
-                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
-                        it[healthGoalId] = healthId
-                    }
+                        ?: PrimaryHealthGoalsTable.insert { it[goalName] = h }[PrimaryHealthGoalsTable.healthGoalId]
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) { it[healthGoalId] = healthId }
                 }
                 userUpdatable.dailyStepGoal?.let { d ->
-                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
-                        it[dailyStepGoal] = d
-                    }
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) { it[dailyStepGoal] = d }
                 }
                 userUpdatable.waterIntakeGoal?.let { w ->
-                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
-                        it[waterIntakeGoal] = w
-                    }
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) { it[waterIntakeGoal] = w }
                 }
                 userUpdatable.calorieGoal?.let { c ->
-                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
-                        it[calorieGoal] = c
-                    }
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) { it[calorieGoal] = c }
                 }
                 userUpdatable.sleepGoal?.let { s ->
-                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
-                        it[sleepGoal] = s
-                    }
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) { it[sleepGoal] = s }
                 }
                 userUpdatable.workoutsGoal?.let { w ->
-                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) {
-                        it[workoutsGoal] = w
-                    }
+                    UserPreferencesTable.update({ UserPreferencesTable.userId eq userId }) { it[workoutsGoal] = w }
                 }
             }
-            log.debug("Deleting cache for userId={}", userId)
+            logInfo(ctx, "User data updated successfully for userId=$userId")
+            logDebug(ctx, "Deleting cache for userId=$userId")
             redis.del("userDTOOf:userId:$userId")
-
             true
         } catch (e: Exception) {
-            log.error("Error updating user data for userId={}", userId, e)
+            logError(ctx, "Error updating user data for userId=$userId: ${e.message}")
             false
         }
     }
 
     /** Get friendship status related with userId and friendId with statuses from `FriendshipStatusFrontEnd` */
     suspend fun getFriendshipStatus(selfId: Int, friendId: Int): FriendshipStatusFrontEnd? {
-        log.debug("Fetching friendship status for selfId={} and friendId={}", selfId, friendId)
+        val ctx = "getFriendshipStatus"
+        logDebug(ctx, "Entering $ctx with selfId={$selfId}, friendId={$friendId}")
+
         if (selfId == friendId) {
             return FriendshipStatusFrontEnd.SELF
         }
 
         return try {
-            DatabaseFactory.read {
+            val status = DatabaseFactory.read {
                 FriendshipsTable.selectAll()
                     .where {
                         ((FriendshipsTable.userId eq selfId) and (FriendshipsTable.friendId eq friendId)) or
@@ -449,40 +429,35 @@ class UserRepository {
                 if (row == null) {
                     FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
                 } else {
-                    val status = StaticLookups.nameForFriendshipStatusId(row[FriendshipsTable.friendshipStatus])
-                    when (status) {
+                    val dbStatus = StaticLookups.nameForFriendshipStatusId(row[FriendshipsTable.friendshipStatus])
+                    when (dbStatus) {
                         FriendshipStatus.ACCEPTED -> FriendshipStatusFrontEnd.YOUR_FRIEND
                         FriendshipStatus.PENDING -> {
-                            if (row[FriendshipsTable.userId].value == selfId) {
-                                FriendshipStatusFrontEnd.INVITE_SENT
-                            } else {
-                                FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
-                            }
+                            if (row[FriendshipsTable.userId].value == selfId) FriendshipStatusFrontEnd.INVITE_SENT
+                            else FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
                         }
                         else -> FriendshipStatusFrontEnd.NOT_YOUR_FRIEND
                     }
                 }
-            }.also { result ->
-                log.info("Friendship status found: {}", result)
             }
+            logInfo(ctx, "Friendship status determined: $status for selfId=$selfId and friendId=$friendId")
+            status
         } catch (e: Exception) {
-            log.error("Error fetching friendship status for userId={} and friendId={}", selfId, friendId, e)
+            logError(ctx, "Error fetching friendship status for selfId=$selfId and friendId=$friendId: ${e.message}")
             null
         }
     }
 
     /** Get all friendships for a user with a given status */
     suspend fun getFriendshipsWhereStatus(userId: Int, status: FriendshipStatus): List<Int> {
+        val statusId = StaticLookups.idFor(status)
         return DatabaseFactory.read {
-            val statusPendingId = StaticLookups.idFor(status)
-
             when (status) {
                 FriendshipStatus.PENDING -> {
-                    FriendshipsTable
-                        .selectAll()
+                    FriendshipsTable.selectAll()
                         .where { // we're looking for friendship requests for the given userId
                             (FriendshipsTable.friendId eq userId) and
-                            (FriendshipsTable.friendshipStatus eq statusPendingId)
+                            (FriendshipsTable.friendshipStatus eq statusId)
                         }
                         .map { row ->
                             // whichever side isn’t the given userId
@@ -493,12 +468,11 @@ class UserRepository {
                         .distinct()
                 }
                 else -> {
-                    FriendshipsTable
-                        .selectAll()
+                    FriendshipsTable.selectAll()
                         .where {
                             ((FriendshipsTable.userId eq userId) or
                                     (FriendshipsTable.friendId eq userId)) and
-                                    (FriendshipsTable.friendshipStatus eq statusPendingId)
+                                    (FriendshipsTable.friendshipStatus eq statusId)
                         }
                         .map { row ->
                             val uid = row[FriendshipsTable.userId].value
@@ -513,26 +487,27 @@ class UserRepository {
 
     /** Finds all friendship requests for a user (status pending)*/
     suspend fun getFriendshipRequests(userId: Int): List<Int> {
-        log.debug("Fetching friendship requests for userId={}", userId)
+        val ctx = "getFriendshipRequests"
+        logDebug(ctx, "Entering $ctx with userId={$userId}")
 
         val cachedRequests = redis.getJson<List<Int>>("friendshipRequestsOf:userId:$userId")
         if (cachedRequests != null) {
-            log.info("Friendship requests found in cache for userId={}", userId)
+            logInfo(ctx, "HIT: Found friendship requests for userId=$userId in cache (size=${cachedRequests.size})")
             return cachedRequests
         } else {
-            log.debug("No friendship requests found in cache for userId={}", userId)
+            logWarn(ctx, "MISS: Friendship requests for userId=$userId not in cache")
         }
 
-        return getFriendshipsWhereStatus(userId, FriendshipStatus.PENDING)
-            .also {
-                log.info("Found {} friendship requests for userId={}", it.size, userId)
-                log.debug("Setting cache for friendship requests for userId={}", userId)
-                redis.setJson("friendshipRequestsOf:userId:$userId", it, 600)
-            }
+        return getFriendshipsWhereStatus(userId, FriendshipStatus.PENDING).also {
+            logInfo(ctx, "Found ${it.size} friendship requests for userId=$userId from database")
+            logDebug(ctx, "Setting cache for friendshipRequestsOf:userId:$userId")
+            redis.setJson("friendshipRequestsOf:userId:$userId", it, 600)
+        }
     }
 
     fun deleteFriendshipCache(uId: Int, fId: Int) {
-        log.debug("Deleting cache for friends and requests of userId={} and friendId={}", fId, uId)
+        val ctx = "deleteFriendshipCache"
+        logDebug(ctx, "Entering $ctx for uId=$uId and fId=$fId – deleting related cache keys")
         redis.del(
             "friendshipRequestsOf:userId:$fId",
             "friendshipRequestsOf:userId:$uId",
@@ -543,7 +518,8 @@ class UserRepository {
 
     /** Set friendship request status. Returns success boolean */
     suspend fun setFriendshipRequestStatus(uId: Int, fId: Int, status: FriendshipStatus?): Boolean {
-        log.debug("Setting friendship request status={} from userId={} to friendId={}", status, uId, fId)
+        val ctx = "setFriendshipRequestStatus"
+        logDebug(ctx, "Entering $ctx with uId={$uId}, fId={$fId}, status={$status}")
 
         return try {
             DatabaseFactory.write {
@@ -556,34 +532,29 @@ class UserRepository {
                             it[friendshipStatus] = statusId
                         }
                         if (rows == 0) {
-                            log.warn("No friendship request found to update for userId={} and friendId={}", fId, uId)
+                            logError(ctx, "No friendship request found to update for fId=$fId and uId=$uId")
                             return@write false
                         } else {
-                            log.info("Friendship request updated successfully for userId={} and friendId={}", fId, uId)
+                            logInfo(ctx, "Friendship request status updated to $status for fId=$fId and uId=$uId")
                             deleteFriendshipCache(uId, fId)
                             return@write true
                         }
                     }
                     else -> {
-                        val friendshipRelationExists = FriendshipsTable
-                            .selectAll()
+                        val friendshipExists = FriendshipsTable.selectAll()
                             .where{
                                 ((FriendshipsTable.userId eq uId) and (FriendshipsTable.friendId eq fId)) or
                                         ((FriendshipsTable.userId eq fId) and (FriendshipsTable.friendId eq uId))
-                            }
-                            .count() > 0
-                        log.debug("Friendship exists: {}", friendshipRelationExists)
+                            }.count() > 0
 
-                        if (!friendshipRelationExists) {
+                        if (!friendshipExists) {
                             FriendshipsTable.insert {
                                 it[userId] = uId
                                 it[friendId] = fId
                                 it[friendshipStatus] = statusId
                             }
-                            deleteFriendshipCache(uId, fId)
-                            return@write true
+                            logInfo(ctx, "Friendship request created with status=$status between uId=$uId and fId=$fId")
                         } else {
-                            log.debug("Friendship already exists, updating status")
                             FriendshipsTable.update({
                                 (FriendshipsTable.userId eq uId) and
                                         (FriendshipsTable.friendId eq fId) or
@@ -592,14 +563,15 @@ class UserRepository {
                             }) {
                                 it[friendshipStatus] = statusId
                             }
-                            deleteFriendshipCache(uId, fId)
-                            return@write true
+                            logInfo(ctx, "Friendship status updated to $status between uId=$uId and fId=$fId")
                         }
+                        deleteFriendshipCache(uId, fId)
+                        true
                     }
                 }
             }
         } catch (e: Exception) {
-            log.error("Error setting friendship request status={} from userId={} to friendId={}", status, uId, fId, e)
+            logError(ctx, "Error setting friendship status for uId=$uId and fId=$fId: ${e.message}")
             false
         }
     }
@@ -608,7 +580,8 @@ class UserRepository {
      * status not used, but necessary for the function signature
      * */
     suspend fun removeFriendship(userId: Int, friendId: Int, status: FriendshipStatus? = null): Boolean {
-        log.debug("Removing friendship from userId={} to friendId={}", userId, friendId)
+        val ctx = "removeFriendship"
+        logDebug(ctx, "Entering $ctx with userId={$userId}, friendId={$friendId}")
         return try {
             DatabaseFactory.write {
                 FriendshipsTable.deleteWhere {
@@ -618,32 +591,33 @@ class UserRepository {
                     (FriendshipsTable.friendId eq userId)
                 }
             }
+            logInfo(ctx, "Friendship removed between userId=$userId and friendId=$friendId")
             deleteFriendshipCache(userId, friendId)
             true
         } catch (e: Exception) {
-            log.error("Error removing friendship from userId={} to friendId={}", userId, friendId, e)
+            logError(ctx, "Error removing friendship between userId=$userId and friendId=$friendId: ${e.message}")
             false
         }
     }
 
     /** Get all friends for a user (status accepted) */
     suspend fun getFriends(userId: Int): List<Int> {
-        log.debug("Fetching friends for userId={}", userId)
+        val ctx = "getFriends"
+        logDebug(ctx, "Entering $ctx with userId={$userId}")
 
         val cachedFriends = redis.getJson<List<Int>>("friendsOf:userId:$userId")
         if (cachedFriends != null) {
-            log.info("Friends found in cache for userId={}", userId)
+            logInfo(ctx, "HIT: Found friends for userId=$userId in cache (size=${cachedFriends.size})")
             return cachedFriends
         } else {
-            log.debug("No friends found in cache for userId={}", userId)
+            logWarn(ctx, "MISS: Friends for userId=$userId not in cache")
         }
 
-        return getFriendshipsWhereStatus(userId, FriendshipStatus.ACCEPTED)
-            .also {
-                log.info("Found {} friends for userId={}", it.size, userId)
-                log.debug("Setting cache for friends for userId={}", userId)
-                redis.setJson("friendsOf:userId:$userId", it, 600)
-            }
+        return getFriendshipsWhereStatus(userId, FriendshipStatus.ACCEPTED).also {
+            logInfo(ctx, "Found ${it.size} friends for userId=$userId from database")
+            logDebug(ctx, "Setting cache for friendsOf:userId:$userId")
+            redis.setJson("friendsOf:userId:$userId", it, 600)
+        }
     }
 
     /**
@@ -652,11 +626,11 @@ class UserRepository {
      * The search is case-insensitive.
      */
     suspend fun findUserIdsByUsernameSubstring(list: List<Int>, substring: String): List<Int> {
-        log.debug("Searching for user IDs where username ILIKE '%{}%'", substring)
+        val ctx = "findUserIdsByUsernameSubstring"
+        logDebug(ctx, "Entering $ctx with substring='{$substring}' and list size=${list.size}")
         return try {
-            DatabaseFactory.read {
-                UserCredentialsTable
-                    .select(UserCredentialsTable.userId)
+            val result = DatabaseFactory.read {
+                UserCredentialsTable.select(UserCredentialsTable.userId)
                     .where {
                         (UserCredentialsTable.userId inList list) and
                         // LOWER(username) LIKE '%lower(substring)%'
@@ -666,100 +640,83 @@ class UserRepository {
                         row[UserCredentialsTable.userId].value
                     }
             }
-        } catch (ex: Exception) {
-            log.error("Error querying user IDs by username substring='{}'", substring, ex)
+            logInfo(ctx, "Found ${result.size} matching user IDs for substring='$substring'")
+            result
+        } catch (e: Exception) {
+            logError(ctx, "Error querying user IDs by substring='$substring': ${e.message}")
             emptyList()
-        }.also { result ->
-            log.info("Found {} matching user IDs for substring='{}'", result.size, substring)
         }
     }
 
     /** Get basic info for a list of users (userId, username, avatarUrl) */
     suspend fun getUsersBasicInfo(userIds: List<Int>): List<UserBasicInfo> {
-        log.debug("Fetching basic info for userIds={}", userIds)
-
+        val ctx = "getUsersBasicInfo"
+        logDebug(ctx, "Entering $ctx with userIds size=${userIds.size}")
         return try {
-            DatabaseFactory.read {
-                try {
-                    UsersTable
-                        .innerJoin(UserCredentialsTable)
-                        .select(
-                            UsersTable.id,
-                            UserCredentialsTable.username,
-                            UsersTable.avatarUrl
-                        )
-                        .where { UsersTable.id inList userIds }
-                        .map { row ->
-                            UserBasicInfo(
-                                userId    = row[UsersTable.id].value,
-                                username  = row[UserCredentialsTable.username],
-                                avatarUrl = row[UsersTable.avatarUrl]
-                            )
-                        }
-                } catch (sqlEx: Exception) {
-                    log.error(
-                        "Error querying basic info for userIds={}",
-                        userIds,
-                        sqlEx
+            val list = DatabaseFactory.read {
+                UsersTable
+                    .innerJoin(UserCredentialsTable)
+                    .select(
+                        UsersTable.id,
+                        UserCredentialsTable.username,
+                        UsersTable.avatarUrl
                     )
-                    emptyList()
-                }
+                    .where { UsersTable.id inList userIds }
+                    .map { row ->
+                        UserBasicInfo(
+                            userId    = row[UsersTable.id].value,
+                            username  = row[UserCredentialsTable.username],
+                            avatarUrl = row[UsersTable.avatarUrl]
+                        )
+                    }
             }
-        } catch (txEx: Exception) {
-            log.error(
-                "Transaction error when reading basic info for userIds={}",
-                userIds,
-                txEx
-            )
+            logInfo(ctx, "Fetched ${list.size} basic user records for provided IDs")
+            list
+        } catch (e: Exception) {
+            logError(ctx, "Error fetching basic info for userIds: ${e.message}")
             emptyList()
-        }.also { list ->
-            log.info(
-                "Fetched {} basic user records for userIds={}",
-                list.size,
-                userIds
-            )
         }
     }
 
     suspend fun updateClubId(userId: Int, clubId: Int): Boolean {
-        log.debug("Updating club ID for userId={} to clubId={}", userId, clubId)
+        val ctx = "updateClubId"
+        logDebug(ctx, "Entering $ctx with userId={$userId}, clubId={$clubId}")
         return try {
             DatabaseFactory.write {
-                UsersTable.update({ UsersTable.id eq userId }) {
-                    it[UsersTable.clubId] = clubId
-                }
+                UsersTable.update({ UsersTable.id eq userId }) { it[UsersTable.clubId] = clubId }
             }
+            logInfo(ctx, "Club ID updated to $clubId for userId=$userId")
             redis.del("userDTOOf:userId:$userId")
             true
         } catch (e: Exception) {
-            log.error("Error updating club ID for userId={}", userId, e)
+            logError(ctx, "Error updating club ID for userId=$userId: ${e.message}")
             false
         }
     }
 
     suspend fun getAllIds(): List<Int> {
-        log.debug("Fetching all user IDs")
+        val ctx = "getAllIds"
+        logDebug(ctx, "Entering $ctx")
 
         val cachedIds = redis.getJson<List<Int>>("allIds")
         if (cachedIds != null) {
-            log.info("Found {} user IDs for all user IDs", cachedIds.size)
+            logInfo(ctx, "HIT: Retrieved ${cachedIds.size} user IDs from cache")
             return cachedIds
         } else {
-            log.debug("No user IDs found in cache for all user IDs")
+            logWarn(ctx, "MISS: All user IDs not found in cache")
         }
 
         return try {
-            DatabaseFactory.read {
-                UsersTable
-                    .selectAll()
-                    .map { it[UsersTable.id].value }
+            val list = DatabaseFactory.read {
+                UsersTable.selectAll().map { it[UsersTable.id].value }
             }
-        } catch (e: Exception) {
-            log.error("Error fetching all user IDs", e)
-            emptyList()
-        }.also { list ->
-            log.info("Fetched {} user IDs", list.size)
+            logInfo(ctx, "Fetched ${list.size} user IDs from database")
+            logDebug(ctx, "Setting cache for allIds")
             redis.setJson("allIds", list, 60)
+            list
+        } catch (e: Exception) {
+            logError(ctx, "Error fetching all user IDs: ${e.message}")
+            emptyList()
         }
     }
 

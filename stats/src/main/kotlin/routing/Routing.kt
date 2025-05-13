@@ -2,8 +2,11 @@ package ru.polyZoj.routing
 
 import io.ktor.server.application.*
 import io.ktor.server.response.*
+import common.Level
+import common.LogSender
 import io.ktor.server.routing.*
 import io.ktor.http.HttpStatusCode
+import common.kafka.createKafkaProducer
 import ru.polyZoj.models.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -27,11 +30,32 @@ import com.auth0.jwt.interfaces.Claim
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-val logger = LoggerFactory.getLogger("StatsService")
+class KafkaClients(
+    val producerWrite: KafkaProducer<String, String>,
+    val consumerWrite: KafkaConsumer<String, String>,
+    val producerRead: KafkaProducer<String, String>,
+    val consumerRead: KafkaConsumer<String, String>,
+    val producerReadDaily: KafkaProducer<String, String>,
+    val consumerReadDaily: KafkaConsumer<String, String>
+)
 
 fun Application.configureRouting() {
 
+    val kafkaProducer = createKafkaProducer()
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("stats-interface", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload, topic: String) =
+        log(Level.INFO, "Sending request to $topic: $payload", context)
+
     val json = Json { ignoreUnknownKeys = true }
+    
     val producerWrite = KafkaProducer<String, String>(producerConfig())
     val consumerWrite = KafkaConsumer<String, String>(consumerConfig("stats-consumer-write"))
     val producerRead = KafkaProducer<String, String>(producerConfig())
@@ -133,6 +157,9 @@ fun Application.configureRouting() {
         authenticate("auth-jwt"){
             route("/stats") {
                 get("/{user_id}") {
+
+                    logRequest("/stats/{user_id}")
+
                     val requestId = UUID.randomUUID().toString()
 
                     val userId = call.parameters["user_id"] ?: run {
@@ -145,7 +172,7 @@ fun Application.configureRouting() {
                         params = listOf(userId)
                     )
 
-                    logger.info(json.encodeToString(payload))
+                    logKafkaSend("/stats/{user_id}", payload, "stats-req-read")
 
                     producerRead.send(ProducerRecord(
                         "stats-req-read",
@@ -169,9 +196,6 @@ fun Application.configureRouting() {
                             response
                         )
                         else -> {
-
-                            logger.info(response.params.toString())
-
                             val stats = parseStatsResponse(response)
                             call.respond(stats)
                         }
@@ -179,6 +203,9 @@ fun Application.configureRouting() {
                 }
 
                 get("/daily/{user_id}/{date}") {
+
+                    logRequest("/daily/{user_id}/{date}")
+
                     val requestId = UUID.randomUUID().toString()
                     
                     val userId = call.parameters["user_id"] ?: run {
@@ -202,6 +229,8 @@ fun Application.configureRouting() {
                         message = "get_daily_stats",
                         params = listOf(userId, dateString)
                     )
+
+                    logKafkaSend("/daily/{user_id}/{date}", payload, "/daily/{user_id}/{date}")
 
                     producerReadDaily.send(ProducerRecord(
                         "stats-req-read-daily",
@@ -232,6 +261,9 @@ fun Application.configureRouting() {
                 }
 
                 post("/add") {
+
+                    logRequest("/add")
+
                     val requestId = UUID.randomUUID().toString()
                     val request = call.receive<AddStatsRequest>()
 
@@ -243,6 +275,8 @@ fun Application.configureRouting() {
                             request.add.toString()
                         )
                     )
+
+                    logKafkaSend("/add", payload, "stats-req-write")
 
                     producerWrite.send(ProducerRecord(
                         "stats-req-write",
@@ -271,7 +305,7 @@ fun Application.configureRouting() {
 
                 post("/workout") {
 
-                    logger.info("Good")
+                    logRequest("/workout")
 
                     val requestId = UUID.randomUUID().toString()
                     val request = call.receive<AddWorkoutRequest>()
@@ -284,6 +318,8 @@ fun Application.configureRouting() {
                             request.timeInSeconds
                         )
                     )
+
+                    logKafkaSend("/workout", payload, "stats-req-write")
 
                     producerWrite.send(ProducerRecord(
                         "stats-req-write",
@@ -314,7 +350,7 @@ fun Application.configureRouting() {
     }
 }
 
-private fun parseStatsResponse(response: DataPayload): StatsResponse {
+internal fun parseStatsResponse(response: DataPayload): StatsResponse {
     return try {
         StatsResponse(
             level = response.params[1].toInt(),
@@ -338,7 +374,7 @@ private fun parseStatsResponse(response: DataPayload): StatsResponse {
     }
 }
 
-private fun parseDailyStatsResponse(response: DataPayload): DailyStatsResponse {
+internal fun parseDailyStatsResponse(response: DataPayload): DailyStatsResponse {
     return try {
         DailyStatsResponse(
             date = response.params[1],
@@ -351,7 +387,6 @@ private fun parseDailyStatsResponse(response: DataPayload): DailyStatsResponse {
             completed_challenges = response.params[8].toInt()
         )
     } catch (e: Exception) {
-        logger.error("Error parsing daily stats: ${e.message}")
         DailyStatsResponse(
             date = "error",
             level = 0,

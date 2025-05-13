@@ -1,9 +1,11 @@
 package ru.polyZoj.routing
 
-import com.auth0.jwt.interfaces.Claim
 import common.DataPayload
+import common.Level
+import common.LogSender
 import common.kafka.KafkaConfig
 import common.kafka.RequestProcessor
+import common.kafka.topics.*
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
 import io.ktor.http.*
@@ -27,24 +29,40 @@ import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 
-inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
 
 fun Application.configureRouting() {
-    val log = logger<Application>()
-
     val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists("user-gateway-requests", 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists("user-gateway-responses", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(USER_GATEWAY_REQ, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(USER_GATEWAY_RES, 1, 3.toShort())
 
     val pendingResponses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
     val reqProcessor = RequestProcessor()
 
     val kafkaProducer = createKafkaProducer()
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("user", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload) =
+        log(Level.INFO, "Sending request to $USER_GATEWAY_REQ: $payload", context)
+
+    suspend fun respondError(
+        call: ApplicationCall,
+        status: HttpStatusCode,
+        message: String,
+        context: String
+    ) {
+        log(Level.ERROR, "Responding ${status.value}: $message", context)
+        call.respond(status, message)
+    }
 
     val consumer = createKafkaConsumer("user-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
@@ -70,23 +88,18 @@ fun Application.configureRouting() {
     }
 
     fun verifyJWTandGetUserId(call: ApplicationCall): String? {
-        val principal = call.principal<JWTPrincipal>()
-            ?: return null
-
-        val userIdClaim: Claim = principal.payload.getClaim("userId")
-        return userIdClaim.asString()
+        return call.principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
     }
 
     suspend fun handleFriendAction(
         call: ApplicationCall,
         command: String,
+        path: String,
         bodyKey: String?,
     ) {
-        // 1) Auth
         val userId = verifyJWTandGetUserId(call)
-            ?: return call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
-
-        // 2) Parse optional body param
+            ?: return respondError(call, HttpStatusCode.Unauthorized, "Not authenticated", path)
+        logRequest(path)
         val params = mutableMapOf("user_id" to userId)
         if (bodyKey != null) {
             val text = call.receiveText().takeIf { it.isNotBlank() }
@@ -94,7 +107,7 @@ fun Application.configureRouting() {
 
             val json = try {
                 Json.parseToJsonElement(text).jsonObject
-            } catch (e: SerializationException) {
+            } catch (_: SerializationException) {
                 return call.respond(HttpStatusCode.BadRequest, "Malformed JSON")
             }
 
@@ -104,13 +117,13 @@ fun Application.configureRouting() {
             params[bodyKey] = value
         }
 
-        // 3) Build payload and dispatch
         val requestPayload = DataPayload.build(command) {
             params.forEach { (k, v) -> param(k, v) }
         }
+        logKafkaSend(path, requestPayload)
         reqProcessor.processRequest(
             requestPayload,
-            "user-gateway-requests",
+            USER_GATEWAY_REQ,
             call,
             kafkaProducer,
             pendingResponses,
@@ -126,23 +139,21 @@ fun Application.configureRouting() {
 
                 // GET /users/{id} - получение информации о конкретном пользователе
                 get("/{id}") {
+                    val staticPath = "GET /api/v1/users/{id}"
                     val userId = verifyJWTandGetUserId(call)
-                        ?: return@get call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        ?: return@get respondError(call, HttpStatusCode.Unauthorized, "Not authenticated", staticPath)
+                    logRequest(staticPath)
                     val id = call.parameters["id"]
-                    log.info("GET /api/v1/users/{}", id)
-                    if (id == null) {
-                        call.respond(HttpStatusCode.BadRequest, "Некорректный id пользователя")
-                        return@get
-                    }
+                        ?: return@get respondError(call, HttpStatusCode.BadRequest, "Некорректный id пользователя", staticPath)
 
                     val requestPayload = DataPayload.build("userInfo") {
                         param("user_id", id)
                         param("self_id", userId)
                     }
-                    log.info("sending request to user-gateway-requests: {}", requestPayload)
+                    logKafkaSend(staticPath, requestPayload)
                     reqProcessor.processRequest(
                         requestPayload,
-                        "user-gateway-requests",
+                        USER_GATEWAY_REQ,
                         call,
                         kafkaProducer,
                         pendingResponses,
@@ -153,20 +164,19 @@ fun Application.configureRouting() {
 
                 // GET /users/username/{username} - получение id пользователя по username
                 get("/username/{username}") {
+                    val staticPath = "GET /api/v1/users/username/{username}"
+                    logRequest(staticPath)
+
                     val username = call.parameters["username"]
-                    log.info("GET /api/v1/users/username/{}", username)
-                    if (username == null) {
-                        call.respond(HttpStatusCode.BadRequest, "Некорректный username пользователя")
-                        return@get
-                    }
+                        ?: return@get respondError(call, HttpStatusCode.BadRequest, "Некорректный username пользователя", staticPath)
 
                     val requestPayload = DataPayload.build("findByUsername") {
                         param("username", username)
                     }
-                    log.info("sending request to user-gateway-requests: {}", requestPayload)
+                    logKafkaSend(staticPath, requestPayload)
                     reqProcessor.processRequest(
                         requestPayload,
-                        "user-gateway-requests",
+                        USER_GATEWAY_REQ,
                         call,
                         kafkaProducer,
                         pendingResponses,
@@ -177,13 +187,18 @@ fun Application.configureRouting() {
 
                 // PUT /users/goals/update - обновление информации о пользователе
                 put("/goals/update") {
-                    log.info("PUT /api/v1/users/goals/update")
+                    val staticPath = "PUT /api/v1/users/goals/update"
                     val userId = verifyJWTandGetUserId(call)
-                        ?: return@put call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        ?: return@put respondError(call, HttpStatusCode.Unauthorized, "Not authenticated", staticPath)
+
+                    logRequest(staticPath)
+
                     val text = call.receiveText()
-                    val json = Json
-                        .parseToJsonElement(text)
-                        .jsonObject
+                    val json = try {
+                        Json.parseToJsonElement(text).jsonObject
+                    } catch (_: SerializationException) {
+                        return@put respondError(call, HttpStatusCode.BadRequest, "Malformed JSON", staticPath)
+                    }
 
                     val requestPayload = DataPayload.build("updateUserInfo") {
                         param("user_id", userId)
@@ -197,10 +212,10 @@ fun Application.configureRouting() {
                         param("sleep_goal", json["sleep_goal"]?.jsonPrimitive?.floatOrNull)
                         param("workouts_goal", json["workouts_goal"]?.jsonPrimitive?.intOrNull)
                     }
-
+                    logKafkaSend(staticPath, requestPayload)
                     reqProcessor.processRequest(
                         requestPayload,
-                        "user-gateway-requests",
+                        USER_GATEWAY_REQ,
                         call,
                         kafkaProducer,
                         pendingResponses,
@@ -211,16 +226,20 @@ fun Application.configureRouting() {
 
                 // DELETE /users/ - удаление пользователя
                 delete {
-                    log.info("DELETE /api/v1/users/")
+                    val staticPath = "DELETE /api/v1/users"
                     val userId = verifyJWTandGetUserId(call)
-                        ?: return@delete call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                        ?: return@delete respondError(call, HttpStatusCode.Unauthorized, "Not authenticated", staticPath)
+
+                    logRequest(staticPath)
 
                     val requestPayload = DataPayload.build("deleteUser") {
                         param("user_id", userId)
                     }
+
+                    logKafkaSend(staticPath, requestPayload)
                     reqProcessor.processRequest(
                         requestPayload,
-                        "user-gateway-requests",
+                        USER_GATEWAY_REQ,
                         call,
                         kafkaProducer,
                         pendingResponses,
@@ -235,17 +254,21 @@ fun Application.configureRouting() {
                     route("/notifications") {
 
                         get {
-                            log.info("GET /api/v1/users/friends/notifications")
                             // "getFriendRequests
+                            val staticPath = "GET /api/v1/users/friends/notifications"
                             val userId = verifyJWTandGetUserId(call)
-                                ?: return@get call.respond(HttpStatusCode.Unauthorized, "Not authenticated")
+                                ?: return@get respondError(call, HttpStatusCode.Unauthorized, "Not authenticated", staticPath)
+
+                            logRequest(staticPath)
+
                             val requestPayload = DataPayload.build("getFriendRequests") {
                                 param("user_id", userId)
                             }
 
+                            logKafkaSend(staticPath, requestPayload)
                             reqProcessor.processRequest(
                                 requestPayload,
-                                "user-gateway-requests",
+                                USER_GATEWAY_REQ,
                                 call,
                                 kafkaProducer,
                                 pendingResponses,
@@ -255,62 +278,62 @@ fun Application.configureRouting() {
                         }
 
                         post("/accept") {
-                            log.info("POST /api/v1/users/friends/notifications/accept")
                             // "acceptFriendRequest"
                             handleFriendAction(
                                 call,
                                 "acceptFriendRequest",
+                                "POST /api/v1/users/friends/notifications/accept/",
                                 "friend_id"
                             )
                         }
 
                         post("/deny") {
-                            log.info("POST /api/v1/users/friends/notifications/deny")
                             // "denyFriendRequest"
                             handleFriendAction(
                                 call,
                                 "denyFriendRequest",
+                                "POST /api/v1/users/friends/notifications/deny/",
                                 "friend_id"
                             )
                         }
                     }
 
                     post("/request") {
-                        log.info("POST /api/v1/users/friends/request")
                         // "addFriendRequest"
                         handleFriendAction(
                             call,
                             "addFriendRequest",
+                            "POST /api/v1/users/friends/request/",
                             "friend_id"
                         )
                     }
 
                     post("/remove") {
-                        log.info("POST /api/v1/users/friends/remove")
                         // "removeFriend"
                         handleFriendAction(
                             call,
                             "removeFriend",
+                            "POST /api/v1/users/friends/remove/",
                             "friend_id"
                         )
                     }
 
                     get("/list") {
-                        log.info("GET /api/v1/users/friends/list")
                         // "getFriendsList
                         handleFriendAction(
                             call,
                             "getFriendsList",
+                            "GET /api/v1/users/friends/list/",
                             null
                         )
                     }
 
                     post("/find") {
-                        log.info("POST /api/v1/users/friends/find")
                         // "findFriend"
                         handleFriendAction(
                             call,
                             "findFriend",
+                            "POST /api/v1/users/friends/find/",
                             "find_username"
                         )
                     }
@@ -328,60 +351,17 @@ private suspend fun handleSuccessfulResponse(
     call: ApplicationCall
 ) {
     when (operation) {
-        "userInfo" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "findByUsername" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "updateUserInfo" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "deleteUser" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "getFriendRequests" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "acceptFriendRequest" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "denyFriendRequest" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "addFriendRequest" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "removeFriend" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "getFriendsList" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
-
-        "findFriend" -> call.respond(
-            HttpStatusCode.OK,
-            result.params
-        )
+        "userInfo",
+        "findByUsername",
+        "updateUserInfo",
+        "deleteUser",
+        "getFriendRequests",
+        "acceptFriendRequest",
+        "denyFriendRequest",
+        "addFriendRequest",
+        "removeFriend",
+        "getFriendsList",
+        "findFriend" -> call.respond(HttpStatusCode.OK, result.params)
 
         else -> call.respond(
             HttpStatusCode.InternalServerError,

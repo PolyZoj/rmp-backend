@@ -11,9 +11,12 @@ import kotlinx.coroutines.sync.withLock
 import ru.polyZoj.models.LoginRequest
 import ru.polyZoj.models.TokenResponse
 import common.DataPayload
+import common.Level
+import common.LogSender
 import common.kafka.RequestProcessor
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import common.kafka.topics.*
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import org.apache.kafka.clients.admin.AdminClient
@@ -22,6 +25,7 @@ import org.apache.kafka.common.errors.TopicExistsException
 import java.util.concurrent.ExecutionException
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.sync.RedisCommands
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.float
@@ -30,15 +34,16 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
+import at.favre.lib.crypto.bcrypt.BCrypt
 
 val redisCommands: RedisCommands<String, String> = RedisClient.create("redis://redis:6379").connect().sync()
 
-inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
-
 fun Application.configureRouting() {
-    val log = logger<Application>()
+    val bcryptHasher = BCrypt.withDefaults()
+
+    fun hash(plain: String): String =
+        bcryptHasher.hashToString(12, plain.toCharArray())
+
     val producer = createKafkaProducer()
     val consumer = createKafkaConsumer("auth-consumer")
     val responses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
@@ -47,8 +52,30 @@ fun Application.configureRouting() {
     
     createKafkaTopics()
 
+    val logger = LogSender(producer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("auth-service", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload) =
+        log(Level.INFO, "Sending request to $AUTH_REQ: $payload", context)
+
+    suspend fun respondError(
+        call: ApplicationCall,
+        status: HttpStatusCode,
+        message: String,
+        context: String
+    ) {
+        log(Level.ERROR, "Responding ${status.value}: $message", context)
+        call.respond(status, message)
+    }
+
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("auth-responses"))
+        consumer.subscribe(listOf(AUTH_RES))
         while (true) {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
@@ -71,14 +98,23 @@ fun Application.configureRouting() {
     routing {
         route("/api/v1/auth") {
             post("/register") {
+                val staticPath = "POST /api/v1/auth/register"
+                logRequest(staticPath)
                 val text = call.receiveText()
-                val json = Json
-                    .parseToJsonElement(text)
-                    .jsonObject
+                val json = try {
+                    Json.parseToJsonElement(text).jsonObject
+                } catch (_: SerializationException) {
+                    return@post respondError(call, HttpStatusCode.BadRequest, "Malformed JSON", staticPath)
+                }
+                val hashedPassword = try {
+                    hash(json["password"]?.jsonPrimitive?.content!!)
+                } catch (_: Exception) {
+                    return@post respondError(call, HttpStatusCode.BadRequest, "Malformed password", staticPath)
+                }
 
                 val payload = DataPayload.build("register") {
                     param("username", json["username"]?.jsonPrimitive?.content)
-                    param("password", json["password"]?.jsonPrimitive?.content)
+                    param("password", hashedPassword)
                     param("first_name", json["first_name"]?.jsonPrimitive?.content)
                     param("last_name", json["last_name"]?.jsonPrimitive?.content)
                     param("email", json["email"]?.jsonPrimitive?.content)
@@ -95,16 +131,21 @@ fun Application.configureRouting() {
                     param("sleep_goal", json["sleep_goal"]?.jsonPrimitive?.floatOrNull)
                     param("workouts_goal", json["workouts_goal"]?.jsonPrimitive?.intOrNull)
                 }
-                reqProcessor.processRequest(payload, "auth-requests", call, producer, responses, mutex, ::handleSuccessfulResponse)
+                logKafkaSend(staticPath, payload)
+                reqProcessor.processRequest(payload, AUTH_REQ, call, producer, responses, mutex, ::handleSuccessfulResponse)
             }
 
             post("/login") {
+                val staticPath = "POST /api/v1/auth/login"
                 val request = call.receive<LoginRequest>()
+                logRequest(staticPath)
+
                 val payload = DataPayload.build("login") {
                     param("username", request.username)
                     param("password", request.password)
                 }
-                reqProcessor.processRequest(payload, "auth-requests", call, producer, responses, mutex, ::handleSuccessfulResponse)
+                logKafkaSend(staticPath, payload)
+                reqProcessor.processRequest(payload, AUTH_REQ, call, producer, responses, mutex, ::handleSuccessfulResponse)
             }
         }
     }
@@ -116,18 +157,22 @@ private suspend fun handleSuccessfulResponse(
     call: ApplicationCall
 ) {
     when (operation) {
-        "register" -> call.respond(
-            HttpStatusCode.OK,
-            TokenResponse(id = result.message ,token = result.getParam("token") ?: "")
-        )
+        "register" -> {
+            val userId = result.getParam<String>("user_id") ?: ""
+            call.respond(
+                HttpStatusCode.OK,
+                TokenResponse(id = userId ,token = result.getParam("token") ?: "")
+            )
+        }
 
         "login" -> {
             val token = result.getParam("token") ?: ""
-            redisCommands.setex(result.message, 600, token)
+            val userId = result.getParam("user_id") ?: ""
+            redisCommands.setex(userId, 600, token)
 
             call.respond(
             HttpStatusCode.OK,
-            TokenResponse(id = result.message ,token = token)
+            TokenResponse(id = userId ,token = token)
             )
         }
 
@@ -154,9 +199,9 @@ private fun Application.createKafkaTopics() {
 //    )
     // TODO: set above for production
     val topics = listOf(
-        NewTopic("auth-requests", 1, 1.toShort())
+        NewTopic(AUTH_REQ, 1, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1")),
-        NewTopic("auth-responses", 1, 1.toShort())
+        NewTopic(AUTH_RES, 1, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1"))
     )
 
