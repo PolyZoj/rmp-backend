@@ -3,14 +3,10 @@ package org.example.simulator
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import org.example.simulator.action.*
 import org.example.simulator.model.UserSession
 import org.example.simulator.util.HttpClientFactory
 import org.example.simulator.util.DataGenerator
-import org.example.simulator.action.RegisterAction
-import org.example.simulator.action.LoginAction
-import org.example.simulator.action.SendFriendRequestAction
-import org.example.simulator.action.AcceptFriendRequestAction
-import org.example.simulator.action.DenyFriendRequestAction
 
 class AppSimulator {
     private val client = HttpClientFactory.create()
@@ -20,7 +16,15 @@ class AppSimulator {
         (1..userCount).map { i ->
             launch {
                 val credentials = DataGenerator.generateCredentials(i)
-                val user = RegisterAction(client).perform(credentials)
+                val userId = RegisterAction(client).perform(credentials)
+
+                val userId2 = GetUserRequest(client).performByUsername(credentials)
+                if (userId == userId2) {
+                    println("Successfully simulated user $userId2")
+                } else {
+                    println("Error when simulated user $userId2")
+                }
+
                 val token = LoginAction(client).perform(credentials)
                 if (token != null) {
                     users += UserSession(credentials.username, token)
