@@ -242,7 +242,7 @@ services:
       - "com.docker.compose.service=psql_challenges_replica"
 
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:23.3      
     ports:
       - "8123:8123"
     volumes:

@@ -11,6 +11,9 @@ import java.sql.PreparedStatement
 import java.util.*
 import java.sql.Timestamp
 import java.time.Instant
+import common.Level
+import common.LogSender
+import common.kafka.createKafkaProducer
 
 object WriteEvents {
     const val TABLE_NAME = "default.user_stats"
@@ -21,7 +24,7 @@ object WriteEvents {
     """
 }
 
-class StatsWriter(
+public class StatsWriter(
     private val connection: Connection,
     private val producer: KafkaProducer<String, String>
 ) {
@@ -30,8 +33,31 @@ class StatsWriter(
         connection.prepareStatement(WriteEvents.INSERT_SQL)
     }
 
+    val kafkaProducer = createKafkaProducer()
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("user", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload, topic: String) =
+        log(Level.INFO, "Sending request to $topic: $payload", context)
+
+    companion object {
+        const val CALORIES_PER_MINUTE_EASY = 5.0
+        const val CALORIES_PER_MINUTE_MEDIUM = 7.0
+        const val CALORIES_PER_MINUTE_HARD = 10.0
+        const val CALORIES_PER_STEP = 0.04
+    }
+
     fun processWriteEvent(key: String, value: String) {
         try {
+
+            logRequest("Stats write $key")
+
             val payload = json.decodeFromString<DataPayload>(value)
 
             if (payload.params.size != 3) {
@@ -40,18 +66,21 @@ class StatsWriter(
             }
 
             val (userId, type, valueStr) = payload.params
-            val eventValue = valueStr.toDoubleOrNull() ?: run {
-                sendError(key, "Invalid value format")
-                return
-            }
+            
+            val events = parseEvents(userId, payload.message, type, valueStr, key) 
+                ?: return
 
             insertStmt.apply {
-                setString(1, UUID.randomUUID().toString())
-                setString(2, userId)
-                setString(3, type)
-                setFloat(4, eventValue.toFloat())
-                setString(5, Timestamp.from(Instant.now()).toString())
-                executeUpdate()
+                events.forEach { event ->
+                    clearParameters()
+                    setString(1, UUID.randomUUID().toString())
+                    setString(2, event.userId)
+                    setString(3, event.type)
+                    setDouble(4, event.value)
+                    setTimestamp(5, Timestamp.from(Instant.now()))
+                    addBatch()
+                }
+                executeBatch()
             }
 
             sendSuccess(key)
@@ -62,6 +91,75 @@ class StatsWriter(
         }
     }
 
+    internal fun parseEvents(
+        userId: String,
+        messageType: String,
+        type: String,
+        valueStr: String,
+        key: String
+    ): List<Event>? {
+        return when (messageType) {
+            "add_workout" -> {
+                val duration = valueStr.toDoubleOrNull() ?: run {
+                    sendError(key, "Invalid duration format")
+                    return null
+                }
+                
+                val caloriesPerMinute = when (type) {
+                    "easy" -> CALORIES_PER_MINUTE_EASY
+                    "medium" -> CALORIES_PER_MINUTE_MEDIUM
+                    "hard" -> CALORIES_PER_MINUTE_HARD
+                    else -> {
+                        sendError(key, "Unknown workout type: $type")
+                        return null
+                    }
+                }
+
+                listOf(
+                    Event(userId, "workout", 1.0),
+                    Event(userId, "calorie", duration * caloriesPerMinute)
+                )
+            }
+            else -> {
+                val value = valueStr.toDoubleOrNull() ?: run {
+                    sendError(key, "Invalid value format")
+                    return null
+                }
+                
+                if (type=="steps"){
+
+                    val count_steps = valueStr.toDoubleOrNull() ?: run {
+                        sendError(key, "Invalid duration format")
+                        return null
+                    }
+
+                    listOf(Event(userId, type, value), Event(userId, "calorie", count_steps*CALORIES_PER_STEP))
+                }
+                else{
+                    listOf(Event(userId, type, value))
+                }
+            }
+        }
+    }
+
+    private fun insertEvent(event: Event) {
+        insertStmt.apply {
+            clearParameters()
+            setString(1, UUID.randomUUID().toString())
+            setString(2, event.userId)
+            setString(3, event.type)
+            setDouble(4, event.value)
+            setTimestamp(5, Timestamp.from(Instant.now()))
+            addBatch()
+        }
+    }
+
+    internal data class Event(
+        val userId: String,
+        val type: String,
+        val value: Double
+    )
+
     private fun sendSuccess(key: String) {
         producer.send(ProducerRecord(
             "stats-resp-write",
@@ -70,7 +168,7 @@ class StatsWriter(
         ))
     }
 
-    private fun sendError(key: String, error: String) {
+    internal fun sendError(key: String, error: String) {
         producer.send(ProducerRecord(
             "stats-resp-write",
             key,
