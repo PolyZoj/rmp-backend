@@ -94,7 +94,7 @@ public class StatsReaderDaily(
         val endOfDay = date.plusDays(1).atStartOfDay().format(dateTimeFormatter)
         return startOfDay to endOfDay
     }
-
+    
     internal fun buildResponse(
         userId: String,
         dateString: String,

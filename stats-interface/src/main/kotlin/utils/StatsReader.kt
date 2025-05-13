@@ -63,11 +63,13 @@ class StatsReader(
                 }
             }
 
+            val xp = (statsMap["xp"]?.toInt() ?: 0)
+
             val response = DataPayload(
                 "success",
                 listOf(
                     userId,
-                    (statsMap["level"]?.toInt() ?: 0).toString(),
+                    (xp.div(500)).toString(),
                     (statsMap["xp"]?.toInt() ?: 0).toString(),
                     (statsMap["steps"]?.toInt() ?: 0).toString(),
                     (statsMap["calorie"]?.toInt() ?: 0).toString(),
