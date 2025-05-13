@@ -39,7 +39,6 @@ class UserRepository {
      * - usernameOf:userId:<userId>
      * - passwordOf:userId:<userId>
      * - userDTOOf:userId:<userId>
-     * - friendshipStatusFrontEndOf:<selfId>:<friendId>
      * - friendshipRequestsOf:userId:<selfId>
      * - friendsOf:userId:<userId>
      * - allIds
@@ -216,7 +215,7 @@ class UserRepository {
             redis.setJson("usernameOf:userId:${newUserId}", reg.username, 600)
             redis.setJson("userIdOf:username:${reg.username}", newUserId, 600)
             redis.setJson("passwordOf:userId:${newUserId}", reg.password, 600)
-
+            redis.del("allIds")
             log.info("User registered successfully with userId={}", newUserId)
             return newUserId
         } catch (e: ExposedSQLException) {
@@ -345,9 +344,14 @@ class UserRepository {
             if (deletedCount > 0) {
                 log.info("User deletion (with cascade) succeeded for userId={}", userId)
                 log.debug("Deleting user from cache for userId={}", userId)
-                redis.del("userDTOOf:userId:$userId")
-                redis.del("usernameOf:userId:$userId")
-                redis.del("passwordOf:userId:$userId")
+                redis.del(
+                    "userDTOOf:userId:$userId",
+                    "usernameOf:userId:$userId",
+                    "passwordOf:userId:$userId",
+                    "allIds",
+                    "friendshipRequestsOf:userId:$userId",
+                    "friendsOf:userId:$userId"
+                )
                 true
             } else {
                 log.warn("No user found to delete for userId={}", userId)
@@ -431,17 +435,7 @@ class UserRepository {
     suspend fun getFriendshipStatus(selfId: Int, friendId: Int): FriendshipStatusFrontEnd? {
         log.debug("Fetching friendship status for selfId={} and friendId={}", selfId, friendId)
         if (selfId == friendId) {
-            log.debug("Setting cache for selfId={} and friendId={}", selfId, friendId)
-            redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", FriendshipStatusFrontEnd.SELF, 600)
             return FriendshipStatusFrontEnd.SELF
-        }
-
-        val cachedStatus = redis.getJson<FriendshipStatusFrontEnd>("friendshipStatusFrontEndOf:$selfId:$friendId")
-        if (cachedStatus != null) {
-            log.info("Friendship status found in cache for selfId={} and friendId={}", selfId, friendId)
-            return cachedStatus
-        } else {
-            log.debug("No friendship status found in cache for selfId={} and friendId={}", selfId, friendId)
         }
 
         return try {
@@ -470,8 +464,6 @@ class UserRepository {
                 }
             }.also { result ->
                 log.info("Friendship status found: {}", result)
-                log.debug("Setting cache for friendship status for selfId={} and friendId={}", selfId, friendId)
-                redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", result, 600)
             }
         } catch (e: Exception) {
             log.error("Error fetching friendship status for userId={} and friendId={}", selfId, friendId, e)
@@ -542,8 +534,6 @@ class UserRepository {
     fun deleteFriendshipCache(uId: Int, fId: Int) {
         log.debug("Deleting cache for friends and requests of userId={} and friendId={}", fId, uId)
         redis.del(
-            "friendshipStatusFrontEndOf:$fId:$uId",
-            "friendshipStatusFrontEndOf:$uId:$fId",
             "friendshipRequestsOf:userId:$fId",
             "friendshipRequestsOf:userId:$uId",
             "friendsOf:userId:$fId",
@@ -769,7 +759,7 @@ class UserRepository {
             emptyList()
         }.also { list ->
             log.info("Fetched {} user IDs", list.size)
-            redis.setJson("allIds", list)
+            redis.setJson("allIds", list, 60)
         }
     }
 
