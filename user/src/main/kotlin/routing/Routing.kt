@@ -1,6 +1,5 @@
 package ru.polyZoj.routing
 
-import com.auth0.jwt.interfaces.Claim
 import common.DataPayload
 import common.Level
 import common.LogSender
@@ -100,7 +99,6 @@ fun Application.configureRouting() {
     ) {
         val userId = verifyJWTandGetUserId(call)
             ?: return respondError(call, HttpStatusCode.Unauthorized, "Not authenticated", path)
-        val context = "$path : $userId"
         logRequest(path)
         val params = mutableMapOf("user_id" to userId)
         if (bodyKey != null) {

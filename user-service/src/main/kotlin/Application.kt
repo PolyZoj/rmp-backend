@@ -356,7 +356,7 @@ fun Application.module() {
                     original = data,
                     conversationId = conversationId,
                     onSuccess = { resp ->
-                        DataPayload.build("success") { param("possible_friends", resp.getParam<List<UserBasicInfo>>("possible_friends")) }
+                        DataPayload.build("success") { param("possible_friend", resp.getParam<List<UserBasicInfo>>("possible_friend")) }
                     },
                     errorStatus = HttpStatusCode.InternalServerError,
                     errorDescription = "Error retrieving possible friends"
