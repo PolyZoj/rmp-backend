@@ -1,16 +1,12 @@
 package ru.polyZoj.utils
 
 import ru.polyZoj.models.DataPayload
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
 import java.sql.Connection
-import java.sql.PreparedStatement
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import org.slf4j.LoggerFactory
 import common.Level
 import common.LogSender
 import common.kafka.createKafkaProducer
@@ -37,7 +33,7 @@ public class StatsReaderDaily(
     val logger = LogSender(kafkaProducer)
 
     fun log(level: Level, message: String, context: String) {
-        logger.log("user", level, message, context)
+        logger.log("stats-interface", level, message, context)
     }
 
     fun logRequest(context: String) =

@@ -1,16 +1,10 @@
 package ru.polyZoj.utils
 
 import ru.polyZoj.models.DataPayload
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
 import java.sql.Connection
-import java.sql.PreparedStatement
-import java.util.*
-import java.sql.Timestamp
-import java.time.Instant
 import common.Level
 import common.LogSender
 import common.kafka.createKafkaProducer
@@ -24,7 +18,7 @@ object ReadEvents {
     """
 }
 
-public class StatsReader(
+class StatsReader(
     private val connection: Connection,
     private val producer: KafkaProducer<String, String>
 ) {
@@ -33,7 +27,7 @@ public class StatsReader(
     val logger = LogSender(kafkaProducer)
 
     fun log(level: Level, message: String, context: String) {
-        logger.log("user", level, message, context)
+        logger.log("stats-interface", level, message, context)
     }
 
     fun logRequest(context: String) =
