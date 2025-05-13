@@ -14,6 +14,7 @@ import common.DataPayload
 import common.kafka.RequestProcessor
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import common.kafka.topics.*
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import org.apache.kafka.clients.admin.AdminClient
@@ -48,7 +49,7 @@ fun Application.configureRouting() {
     createKafkaTopics()
 
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("auth-responses"))
+        consumer.subscribe(listOf(AUTH_RES))
         while (true) {
             val records = consumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
@@ -95,7 +96,7 @@ fun Application.configureRouting() {
                     param("sleep_goal", json["sleep_goal"]?.jsonPrimitive?.floatOrNull)
                     param("workouts_goal", json["workouts_goal"]?.jsonPrimitive?.intOrNull)
                 }
-                reqProcessor.processRequest(payload, "auth-requests", call, producer, responses, mutex, ::handleSuccessfulResponse)
+                reqProcessor.processRequest(payload, AUTH_REQ, call, producer, responses, mutex, ::handleSuccessfulResponse)
             }
 
             post("/login") {
@@ -104,7 +105,7 @@ fun Application.configureRouting() {
                     param("username", request.username)
                     param("password", request.password)
                 }
-                reqProcessor.processRequest(payload, "auth-requests", call, producer, responses, mutex, ::handleSuccessfulResponse)
+                reqProcessor.processRequest(payload, AUTH_REQ, call, producer, responses, mutex, ::handleSuccessfulResponse)
             }
         }
     }
@@ -116,18 +117,22 @@ private suspend fun handleSuccessfulResponse(
     call: ApplicationCall
 ) {
     when (operation) {
-        "register" -> call.respond(
-            HttpStatusCode.OK,
-            TokenResponse(id = result.message ,token = result.getParam("token") ?: "")
-        )
+        "register" -> {
+            val userId = result.getParam<String>("user_id") ?: ""
+            call.respond(
+                HttpStatusCode.OK,
+                TokenResponse(id = userId ,token = result.getParam("token") ?: "")
+            )
+        }
 
         "login" -> {
             val token = result.getParam("token") ?: ""
-            redisCommands.setex(result.message, 600, token)
+            val userId = result.getParam("user_id") ?: ""
+            redisCommands.setex(userId, 600, token)
 
             call.respond(
             HttpStatusCode.OK,
-            TokenResponse(id = result.message ,token = token)
+            TokenResponse(id = userId ,token = token)
             )
         }
 
@@ -154,9 +159,9 @@ private fun Application.createKafkaTopics() {
 //    )
     // TODO: set above for production
     val topics = listOf(
-        NewTopic("auth-requests", 1, 1.toShort())
+        NewTopic(AUTH_REQ, 1, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1")),
-        NewTopic("auth-responses", 1, 1.toShort())
+        NewTopic(AUTH_RES, 1, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1"))
     )
 

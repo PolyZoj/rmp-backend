@@ -605,24 +605,30 @@ services:
           cpus: "0.75"
           memory: 512M
 
-#  log-service:
-#    build:
-#      context: .
-#      dockerfile: log-service/Dockerfile
-#      args:
-#        <<: *build-args
-#        SERVICE: log-service
-#    image: rmp-backend-log-service
-#    depends_on:
-#      - clickhouse
-#      - kafka
-#    expose:
-#      - "8080"
-#    environment:
-#      - CLICKHOUSE_HOST=clickhouse
-#      - CLICKHOUSE_PORT=8123
-#      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-#    <<: *microservice-common
+  log-service:
+    build:
+      context: .
+      dockerfile: log-service/Dockerfile
+      args:
+        SERVICE: log-service
+        <<: *build-args
+    image: rmp-backend-log-service
+    depends_on:
+      - clickhouse
+      - kafka
+    expose:
+      - "8080"
+    environment:
+      - CLICKHOUSE_URL=/run/secrets/clickhouse-url-log-service
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    <<: *microservice-common
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+    secrets:
+      - clickhouse-url-log-service
 
   # Прокси для сервисов
   nginx:
@@ -635,13 +641,14 @@ services:
       - "8083:8083"
       - "8084:8084"
       - "8085:8085"
+      - "8086:8086"
     depends_on:
       - auth-service
       - user
       - stats
       - challenges
-      - club-service
       - club-gateway
+      - log-service
     networks:
       - backend_net
     <<: *microservice-common
@@ -686,3 +693,7 @@ networks:
     labels:
       - "com.docker.compose.project=rmp-backend"
       - "com.docker.compose.network=backend_net"
+
+secrets:
+  clickhouse-url-log-service:
+    file: secrets/clickhouse-url-log-service
