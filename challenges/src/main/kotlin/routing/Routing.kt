@@ -32,6 +32,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
 
+val log_cool = logger<Application>()
+
 fun Application.configureRouting() {
     val log = logger<Application>()
 
@@ -205,6 +207,9 @@ private suspend fun handleSuccessfulResponse(
     result: DataPayload,
     call: ApplicationCall
 ) {
+
+    log_cool.info(result.params.toString())
+
     when (operation) {
         "achievementsAll" -> call.respond(
             HttpStatusCode.OK,
