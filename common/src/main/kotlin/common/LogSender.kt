@@ -20,9 +20,8 @@ class LogSender(
             param("context", context)
 
         }
-
         try {
-            producer.send(ProducerRecord(topic, null, payload))
+            producer.send(ProducerRecord(topic, "null", payload))
             logger.info("Log sent to topic '$topic': $payload")
         } catch (e: Exception) {
             logger.error("Failed to send log to topic '$topic'", e)

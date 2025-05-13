@@ -44,7 +44,6 @@ fun Application.module() {
 
     logConsumer.startConsuming { conversationId, message ->
         logger.info("Consuming conversationId: $conversationId")
-        logger.info("Received log request: $message")
 
         try {
             DBFactory.insertLog(
