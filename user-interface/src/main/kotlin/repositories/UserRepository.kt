@@ -710,7 +710,6 @@ class UserRepository(private val logger: LogSender) {
             logError(ctx, "Error fetching all user IDs: ${e.message}")
             emptyList()
         }.also { list ->
-            log.info("Fetched {} user IDs", list.size)
             redis.setJson("allIds", list, 60)
         }
     }
