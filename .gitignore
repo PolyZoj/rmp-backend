@@ -71,3 +71,6 @@ fabric.properties
 **/bin/
 
 .vscode/
+
+secrets/
+!secrets/example

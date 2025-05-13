@@ -117,18 +117,22 @@ private suspend fun handleSuccessfulResponse(
     call: ApplicationCall
 ) {
     when (operation) {
-        "register" -> call.respond(
-            HttpStatusCode.OK,
-            TokenResponse(id = result.message ,token = result.getParam("token") ?: "")
-        )
+        "register" -> {
+            val userId = result.getParam<String>("user_id") ?: ""
+            call.respond(
+                HttpStatusCode.OK,
+                TokenResponse(id = userId ,token = result.getParam("token") ?: "")
+            )
+        }
 
         "login" -> {
             val token = result.getParam("token") ?: ""
-            redisCommands.setex(result.message, 600, token)
+            val userId = result.getParam("user_id") ?: ""
+            redisCommands.setex(userId, 600, token)
 
             call.respond(
             HttpStatusCode.OK,
-            TokenResponse(id = result.message ,token = token)
+            TokenResponse(id = userId ,token = token)
             )
         }
 

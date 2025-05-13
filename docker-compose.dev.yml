@@ -619,10 +619,7 @@ services:
     expose:
       - "8080"
     environment:
-      - CLICKHOUSE_USER=def
-      - CLICKHOUSE_PASSWORD=def
-      - CLICKHOUSE_HOST=clickhouse
-      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_URL=/run/secrets/clickhouse-url-log-service
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     <<: *microservice-common
     deploy:
@@ -630,6 +627,8 @@ services:
         limits:
           cpus: "0.75"
           memory: 512M
+    secrets:
+      - clickhouse-url-log-service
 
   # Прокси для сервисов
   nginx:
@@ -694,3 +693,7 @@ networks:
     labels:
       - "com.docker.compose.project=rmp-backend"
       - "com.docker.compose.network=backend_net"
+
+secrets:
+  clickhouse-url-log-service:
+    file: secrets/clickhouse-url-log-service
