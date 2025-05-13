@@ -38,6 +38,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.logstash.logback.encoder)
     implementation("io.lettuce:lettuce-core:6.2.3.RELEASE")
+    implementation("at.favre.lib:bcrypt:0.10.2")
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)

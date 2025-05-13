@@ -28,7 +28,6 @@ dependencies {
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.netty)
-    implementation(libs.logback.classic)
     implementation(libs.ktor.server.config.yaml)
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)
@@ -40,6 +39,7 @@ dependencies {
     implementation("io.ktor:ktor-client-core:2.3.2")
     implementation("io.ktor:ktor-client-cio:2.3.2") 
     implementation("org.apache.kafka:kafka-clients:3.7.1")
+    implementation("at.favre.lib:bcrypt:0.10.2")
 }
 
 tasks.register("downloadDependencies") {
