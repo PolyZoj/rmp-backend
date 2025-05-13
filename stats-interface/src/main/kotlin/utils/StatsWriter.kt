@@ -50,6 +50,7 @@ public class StatsWriter(
         const val CALORIES_PER_MINUTE_EASY = 5.0
         const val CALORIES_PER_MINUTE_MEDIUM = 7.0
         const val CALORIES_PER_MINUTE_HARD = 10.0
+        const val XP_PER_CHALLENGES = 100.0
         const val CALORIES_PER_STEP = 0.04
     }
 
@@ -136,7 +137,12 @@ public class StatsWriter(
                     listOf(Event(userId, type, value), Event(userId, "calorie", count_steps*CALORIES_PER_STEP))
                 }
                 else{
-                    listOf(Event(userId, type, value))
+                    if (type=="challenge"){
+                        listOf(Event(userId, type, 1.0), Event(userId, "xp", XP_PER_CHALLENGES))
+                    }
+                    else{
+                        listOf(Event(userId, type, value))
+                    }
                 }
             }
         }
