@@ -72,24 +72,38 @@ class ClubRepository(private val logger: LogSender) {
         }
     }
 
-    @OptIn(ExperimentalTime::class)
-    fun removeMember(clubId: Int, userId: Int): Boolean {
-        logInfo("removeMember", "Removing member userId=$userId from clubId=$clubId")
-        return try {
-            DatabaseFactory.write {
-                val deleted = ClubMembersTable.deleteWhere { 
-                    (ClubMembersTable.clubId eq clubId) and (ClubMembersTable.userId eq userId)
-                }
-                deleted > 0
-            }.also { success ->
-                if (success) logInfo("removeMember", "Member removed successfully: clubId=$clubId, userId=$userId")
-                else logInfo("removeMember", "Failed to remove member: clubId=$clubId, userId=$userId")
+@OptIn(ExperimentalTime::class)
+fun removeMember(clubId: Int, userId: Int): Boolean {
+    logInfo("removeMember", "Removing member userId=$userId from clubId=$clubId")
+    return try {
+        DatabaseFactory.write {
+            val deleted = ClubMembersTable.deleteWhere { 
+                (ClubMembersTable.clubId eq clubId) and (ClubMembersTable.userId eq userId)
             }
-        } catch (e: Exception) {
-            logError("removeMember", "Error removing member: clubId=$clubId, userId=$userId, error=${e.message}")
-            false
+            val success = deleted > 0
+
+            if (success) {
+                val memberCount = ClubMembersTable
+                    .selectAll()
+                    .where{ ClubMembersTable.clubId eq clubId } 
+                    .count()
+                
+                if (memberCount == 0L) {
+                    ClubsTable.deleteWhere { ClubsTable.id eq clubId }
+                    logInfo("removeMember", "Club $clubId deleted due to zero remaining members")
+                }
+            }
+
+            success
+        }.also { success ->
+            if (success) logInfo("removeMember", "Member removed successfully: clubId=$clubId, userId=$userId")
+            else logInfo("removeMember", "Failed to remove member: clubId=$clubId, userId=$userId")
         }
+    } catch (e: Exception) {
+        logError("removeMember", "Error removing member: clubId=$clubId, userId=$userId, error=${e.message}")
+        false
     }
+}
     
     @OptIn(ExperimentalTime::class)
     fun getClub(clubId: Int): Club? {
