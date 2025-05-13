@@ -11,6 +11,9 @@ import java.sql.PreparedStatement
 import java.util.*
 import java.sql.Timestamp
 import java.time.Instant
+import common.Level
+import common.LogSender
+import common.kafka.createKafkaProducer
 
 object ReadEvents {
     const val SELECT_SQL = """
@@ -25,10 +28,27 @@ public class StatsReader(
     private val connection: Connection,
     private val producer: KafkaProducer<String, String>
 ) {
+
+    val kafkaProducer = createKafkaProducer()
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("user", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload, topic: String) =
+        log(Level.INFO, "Sending request to $topic: $payload", context)
+
     private val json = Json { ignoreUnknownKeys = true }
 
     fun processReadEvent(key: String, value: String) {
         try {
+
+            logRequest("Stats read $key")
+
             val payload = json.decodeFromString<DataPayload>(value)
             
             if (payload.params.size != 1) {
@@ -62,6 +82,8 @@ public class StatsReader(
                     (statsMap["challenge"]?.toInt() ?: 0).toString()
                 )
             )
+
+            logKafkaSend("Stats read $key", response, "stats-resp-read")
 
             producer.send(ProducerRecord(
                 "stats-resp-read",

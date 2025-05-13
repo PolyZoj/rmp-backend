@@ -11,8 +11,9 @@ import java.sql.PreparedStatement
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import org.slf4j.LoggerFactory
-
-val logger = LoggerFactory.getLogger("StatsServiceCool")
+import common.Level
+import common.LogSender
+import common.kafka.createKafkaProducer
 
 object ReadEventsDaily {
     const val SELECT_DAILY_SQL = """
@@ -32,9 +33,24 @@ public class StatsReaderDaily(
     private val json = Json { ignoreUnknownKeys = true }
     private val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
+    val kafkaProducer = createKafkaProducer()
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("user", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload, topic: String) =
+        log(Level.INFO, "Sending request to $topic: $payload", context)
+
     fun processReadEventDaily(key: String, value: String) {
-        
         try {
+
+            logRequest("Stats read daily $key")
+
             val payload = json.decodeFromString<DataPayload>(value)
             
             if (payload.params.size != 2) {
@@ -68,12 +84,11 @@ public class StatsReaderDaily(
 
             val response = buildResponse(userId, dateString, statsMap)
 
-            logger.info(json.encodeToString(response))
+            logKafkaSend("Stats read daily $key", response, "stats-resp-read-daily")
 
             producer.send(ProducerRecord("stats-resp-read-daily", key, json.encodeToString(response)))
             
         } catch (e: Exception) {
-            logger.error("Ошибка обработки запроса", e)
             sendError(key, "Внутренняя ошибка: ${e.message?.take(50)}")
         }
     }

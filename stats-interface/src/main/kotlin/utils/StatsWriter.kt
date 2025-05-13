@@ -11,6 +11,9 @@ import java.sql.PreparedStatement
 import java.util.*
 import java.sql.Timestamp
 import java.time.Instant
+import common.Level
+import common.LogSender
+import common.kafka.createKafkaProducer
 
 object WriteEvents {
     const val TABLE_NAME = "default.user_stats"
@@ -30,6 +33,19 @@ public class StatsWriter(
         connection.prepareStatement(WriteEvents.INSERT_SQL)
     }
 
+    val kafkaProducer = createKafkaProducer()
+    val logger = LogSender(kafkaProducer)
+
+    fun log(level: Level, message: String, context: String) {
+        logger.log("user", level, message, context)
+    }
+
+    fun logRequest(context: String) =
+        log(Level.INFO, "Received request", context)
+
+    fun logKafkaSend(context: String, payload: DataPayload, topic: String) =
+        log(Level.INFO, "Sending request to $topic: $payload", context)
+
     companion object {
         const val CALORIES_PER_MINUTE_EASY = 5.0
         const val CALORIES_PER_MINUTE_MEDIUM = 7.0
@@ -39,6 +55,9 @@ public class StatsWriter(
 
     fun processWriteEvent(key: String, value: String) {
         try {
+
+            logRequest("Stats write $key")
+
             val payload = json.decodeFromString<DataPayload>(value)
 
             if (payload.params.size != 3) {
