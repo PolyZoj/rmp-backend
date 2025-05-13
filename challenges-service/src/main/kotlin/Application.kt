@@ -1,11 +1,14 @@
 package ru.polyZoj
 
 import common.DataPayload
+import common.Level
+import common.LogSender
 import common.kafka.KafkaConfig
 import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
+import common.kafka.topics.*
 import common.models.Achievement
 import common.models.AchievementStatus
 import common.models.AchievementType
@@ -18,8 +21,6 @@ import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.KafkaProducer
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import ru.polyZoj.logic.AchievementCalculator
 import ru.polyZoj.logic.StatsClient
 import ru.polyZoj.logic.consumerConfig
@@ -37,10 +38,7 @@ fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
-inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
-
 fun Application.module() {
-    val log = logger<Application>()
 
     install(ContentNegotiation) {
         json(
@@ -53,10 +51,10 @@ fun Application.module() {
     }
 
     val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists("challenges-requests", 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists("challenges-responses", 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists("challenges-stats-requests", 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists("challenges-stats-responses", 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(CHALLENGES_SERVICE_REQ, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(CHALLENGES_SERVICE_RES, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(CHALLENGES_STATS_REQ, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(CHALLENGES_STATS_RES, 1, 3.toShort())
 
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
@@ -65,26 +63,36 @@ fun Application.module() {
     val statsConsumerService = KafkaConsumer<String, String>(consumerConfig("challenges-stats-consumer"))
 
     val statsClient = StatsClient(statsProducerService, statsConsumerService)
-    val calculator = AchievementCalculator(statsClient)
+
+    val logger = LogSender(kafkaProducer)
+    val calculator = AchievementCalculator(statsClient, logger)
+
+    fun logInfo(ctx: String, msg: String) = logger.log("challenges-service", Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = logger.log("challenges-service", Level.ERROR, msg, ctx)
+
 
     // payloads from challenges-interface
-    val challengesResponseConsumer = KafkaConsumerService(createKafkaConsumer("challenges-service-consumer"), listOf("challenges-responses"))
+    val challengesResponseConsumer = KafkaConsumerService(createKafkaConsumer("challenges-service-consumer"), listOf(CHALLENGES_SERVICE_RES))
     challengesResponseConsumer.startConsuming { conversationId, message ->
-        log.info("Received response: $message")
         pendingResponses[conversationId]?.complete(message)
         pendingResponses.remove(conversationId)
     }
 
-    fun handleAchievementsRequest(data: DataPayload, conversationId: String, userId: String) {
+    fun handleAchievementsRequest(
+        data: DataPayload,
+        conversationId: String,
+        userId: String,
+        command: String
+    ) {
         val future = CompletableFuture<DataPayload>()
         pendingResponses[conversationId] = future
 
-        log.info("Sending request to challenges-requests: $data")
-        producerService.send("challenges-requests", conversationId, data)
+        logInfo(command, "Sending request to $CHALLENGES_SERVICE_REQ: $data")
+        producerService.send(CHALLENGES_SERVICE_REQ, conversationId, data)
 
         future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
             if (error != null || response.params.isEmpty() || response.message == "error") {
-                log.warn("Received from challenges-interface: $response")
+                logError(command, "Received from challenges-interface: $response")
                 val msg = if (response.message == "error") {
                     response
                 } else {
@@ -93,11 +101,11 @@ fun Application.module() {
                         description = "Error from challenges-interface",
                     )
                 }
-                producerService.send("challenges-gateway-responses", conversationId, msg)
+                producerService.send(CHALLENGES_GATEWAY_RES, conversationId, msg)
                 return@whenComplete
             }
 
-            log.info("Received from challenges-interface: $response")
+            logInfo(command, "Received from challenges-interface: $response")
             val achievements = response.getParam<List<Achievement>>("achievements")
             val updated = achievements?.map { orig ->
                 val wasCompleted = orig.status == AchievementStatus.COMPLETED
@@ -105,7 +113,7 @@ fun Application.module() {
                 val isCompleted = new.status == AchievementStatus.COMPLETED
                 if (isCompleted != wasCompleted) {
                     producerService.send(
-                        "challenges-requests",
+                        CHALLENGES_SERVICE_REQ,
                         UUID.randomUUID().toString(),
                         DataPayload.build("completeAchievement") {
                             param("achievement", orig)
@@ -115,8 +123,9 @@ fun Application.module() {
                 }
                 new
             }
+            logInfo(command, "Sending to $CHALLENGES_GATEWAY_RES: $updated")
             producerService.send(
-                "challenges-gateway-responses",
+                CHALLENGES_GATEWAY_RES,
                 conversationId,
                 DataPayload.build("success") {
                     param("achievements", updated)
@@ -125,10 +134,10 @@ fun Application.module() {
     }
 
     // payloads from challenges-gateway
-    val challengesConsumer = KafkaConsumerService(createKafkaConsumer("challenges-service-consumer"), listOf("challenges-gateway-requests"))
+    val challengesConsumer = KafkaConsumerService(createKafkaConsumer("challenges-service-consumer"), listOf(CHALLENGES_GATEWAY_REQ))
     challengesConsumer.startConsuming { conversationId, data ->
-        log.info("Received challenges request: $data")
         val command = data.message
+        logInfo(command, "Received request: $data")
         when (command) {
 
             "achievementsAll" -> {
@@ -138,11 +147,12 @@ fun Application.module() {
                         status = HttpStatusCode.BadRequest,
                         description = "Missing user id"
                     )
-                    producerService.send("challenges-gateway-responses", conversationId, err)
+                    logError(command, "Sending to $CHALLENGES_GATEWAY_RES: $err")
+                    producerService.send(CHALLENGES_GATEWAY_RES, conversationId, err)
                     return@startConsuming
                 }
 
-                handleAchievementsRequest(data, conversationId, userId)
+                handleAchievementsRequest(data, conversationId, userId, command)
             }
 
             "achievementsDay" -> {
@@ -153,11 +163,12 @@ fun Application.module() {
                         status = HttpStatusCode.BadRequest,
                         description = "Missing required fields"
                     )
-                    producerService.send("challenges-gateway-responses", conversationId, err)
+                    logError(command, "Sending to $CHALLENGES_GATEWAY_RES: $err")
+                    producerService.send(CHALLENGES_GATEWAY_RES, conversationId, err)
                     return@startConsuming
                 }
 
-                handleAchievementsRequest(data, conversationId, userId)
+                handleAchievementsRequest(data, conversationId, userId, command)
             }
 
             "createAchievement" -> {
@@ -179,7 +190,8 @@ fun Application.module() {
                         status = HttpStatusCode.BadRequest,
                         description = "Could not create achievement: ${e.message}",
                     )
-                    producerService.send("challenges-gateway-responses", conversationId, msg)
+                    logError(command, "Sending to $CHALLENGES_GATEWAY_RES: $msg")
+                    producerService.send(CHALLENGES_GATEWAY_RES, conversationId, msg)
                     return@startConsuming
                 }
                 val dataPayload = DataPayload.build("createAchievement") {
@@ -189,11 +201,12 @@ fun Application.module() {
                 val future = CompletableFuture<DataPayload>()
                 pendingResponses[conversationId] = future
 
-                producerService.send("challenges-requests", conversationId, dataPayload)
+                logInfo(command, "Sending request to $CHALLENGES_GATEWAY_REQ: $dataPayload")
+                producerService.send(CHALLENGES_SERVICE_REQ, conversationId, dataPayload)
 
                 future.orTimeout(5, TimeUnit.SECONDS).whenComplete { response, error ->
                     if (error != null || response.params.isEmpty() || response.message == "error") {
-                        log.warn("Received from challenges-interface: $response")
+                        logError(command, "Received from challenges-interface: $response")
                         val msg = if (response.message == "error") {
                             response
                         } else {
@@ -202,14 +215,14 @@ fun Application.module() {
                                 description = "Error from challenges-interface",
                             )
                         }
-                        producerService.send("challenges-gateway-responses", conversationId, msg)
+                        producerService.send(CHALLENGES_GATEWAY_RES, conversationId, msg)
                         return@whenComplete
                     }
 
-                    log.info("Received from challenges-interface: $response")
+                    logInfo(command, "Received from challenges-interface: $response")
                     val ach = response.getParam<Achievement>("achievement")
                     producerService.send(
-                        "challenges-gateway-responses",
+                        CHALLENGES_GATEWAY_RES,
                         conversationId,
                         DataPayload.build("success") {
                             param("achievement", ach)
@@ -223,8 +236,8 @@ fun Application.module() {
                     status = HttpStatusCode.BadRequest,
                     description = "Unknown command"
                 )
-                log.warn("Unknown command: $command" ,"\n", "sending to challenges-gateway-responses: $msg")
-                producerService.send("challenges-gateway-responses", conversationId, msg)
+                logError(command, "Unknown command: $command \n Sending to $CHALLENGES_GATEWAY_RES: $msg")
+                producerService.send(CHALLENGES_GATEWAY_RES, conversationId, msg)
             }
         }
     }

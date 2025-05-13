@@ -1,5 +1,7 @@
 package ru.polyZoj.logic
 
+import common.Level
+import common.LogSender
 import common.models.Achievement
 import common.models.AchievementStatus
 import common.models.AchievementType
@@ -7,7 +9,6 @@ import kotlinx.serialization.Serializable
 import ru.polyZoj.cache.RedisFactory
 import ru.polyZoj.cache.getJson
 import ru.polyZoj.cache.setJson
-import ru.polyZoj.logger
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -22,9 +23,7 @@ data class DailyStats(
     val challenges: Int
 )
 
-class AchievementCalculator(private val statsClient: StatsClient) {
-    private val log = logger<AchievementCalculator>()
-
+class AchievementCalculator(private val statsClient: StatsClient, private val logger: LogSender) {
     /**
      * Cache keys:
      * - dailyStatsOf:day:<day>
@@ -45,7 +44,7 @@ class AchievementCalculator(private val statsClient: StatsClient) {
         }
 
         if (achieved) {
-            log.info("Achievement with id=${achievement.id} marked as completed.")
+            logger.log("challenges-service", Level.DEBUG, "Achievement with id=${achievement.id} marked as completed.", "AchievementCalculator: evaluateAndUpdate")
             statsClient.incrementCompletedChallenges(userId)
             return achievement.copy(status = AchievementStatus.COMPLETED)
         }
@@ -56,18 +55,12 @@ class AchievementCalculator(private val statsClient: StatsClient) {
         val days = ChronoUnit.DAYS.between(start, end).toInt()
         return (0..days).map { offset ->
             val date = start.plusDays(offset.toLong()).toString()
-            var cache: DailyStats? = null
-            try {
-                cache = redis.getJson<DailyStats>("dailyStatsOf:day:$date")
-
-            } catch (e: Exception) {
-                log.warn("Error: ${e.message}")
-            }
+            val cache = redis.getJson<DailyStats>("dailyStatsOf:day:$date")
             if (cache != null) {
-                log.info("dailyStatsOf:day:$date HIT")
+                logger.log("challenges-service", Level.DEBUG, "dailyStatsOf:day:$date HIT", "AchievementCalculator: accumulate")
                 return@map cache
             }
-            log.info("Retrieving dailyStats for $date from stats-interface")
+            logger.log("challenges-service", Level.DEBUG, "Retrieving dailyStats for $date from stats-interface", "AchievementCalculator: accumulate")
             val payload = statsClient.readDaily(userId, date)
             val dailyStats = DailyStats(
                 level      = payload.params[2].toInt(),

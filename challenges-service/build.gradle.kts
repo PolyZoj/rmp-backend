@@ -24,7 +24,6 @@ dependencies {
     implementation("ru.polyZoj:common")
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
-    implementation(libs.logback.classic)
     implementation(libs.ktor.server.config.yaml)
     implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
