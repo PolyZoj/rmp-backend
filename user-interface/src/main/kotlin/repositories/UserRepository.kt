@@ -1,5 +1,6 @@
 package ru.polyZoj.repositories
 
+import at.favre.lib.crypto.bcrypt.BCrypt
 import common.Level
 import common.LogSender
 import org.jetbrains.exposed.exceptions.ExposedSQLException
@@ -120,7 +121,7 @@ class UserRepository(private val logger: LogSender) {
 
         if (cachedUsername != null && cachedPassword != null && cachedId != null) {
             logInfo(ctx, "HIT: Found credentials in cache for $username")
-            if (cachedUsername == username && cachedPassword == password) {
+            if (cachedUsername == username && verifyPassword(password, cachedPassword)) {
                 logInfo(ctx, "Login successful for $username using cache (userId=$cachedId)")
                 return cachedId
             } else {
@@ -131,10 +132,13 @@ class UserRepository(private val logger: LogSender) {
         }
 
         val userId: Int? = DatabaseFactory.read {
-            UserCredentialsTable.select(UserCredentialsTable.userId)
-                .where { (UserCredentialsTable.username eq username) and (UserCredentialsTable.password eq password) }
+            UserCredentialsTable.select(UserCredentialsTable.userId, UserCredentialsTable.password)
+                .where { (UserCredentialsTable.username eq username) }
                 .limit(1)
-                .map { it[UserCredentialsTable.userId].value }
+                .map {
+                    if (verifyPassword(password, it[UserCredentialsTable.password])) it[UserCredentialsTable.userId].value
+                    else null
+                }
                 .singleOrNull()
         }
 
@@ -149,6 +153,10 @@ class UserRepository(private val logger: LogSender) {
         }
         return userId
     }
+
+    private val bcryptVerifier = BCrypt.verifyer()
+    fun verifyPassword(plain: String, hashed: String): Boolean =
+        bcryptVerifier.verify(plain.toCharArray(), hashed).verified
 
     /** Create a brand‐new user (all tables) and return their new user_id */
     @OptIn(ExperimentalTime::class)
