@@ -678,6 +678,7 @@ class UserRepository(private val logger: LogSender) {
                 UsersTable.update({ UsersTable.id eq userId }) { it[UsersTable.clubId] = clubId }
             }
             logInfo(ctx, "Club ID updated to $clubId for userId=$userId")
+            redis.del("userDTOOf:userId:$userId")
             true
         } catch (e: Exception) {
             logError(ctx, "Error updating club ID for userId=$userId: ${e.message}")
@@ -708,6 +709,9 @@ class UserRepository(private val logger: LogSender) {
         } catch (e: Exception) {
             logError(ctx, "Error fetching all user IDs: ${e.message}")
             emptyList()
+        }.also { list ->
+            log.info("Fetched {} user IDs", list.size)
+            redis.setJson("allIds", list, 60)
         }
     }
 

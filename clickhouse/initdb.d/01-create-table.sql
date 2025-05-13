@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS default.user_stats
     user_id String,
     event_type String,
     value Float64,
-    timestamp String
+    timestamp String,
+    tmp String,
 )
 ENGINE = ReplacingMergeTree()
 ORDER BY (id);
