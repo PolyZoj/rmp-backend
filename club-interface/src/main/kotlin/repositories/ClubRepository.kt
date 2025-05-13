@@ -13,20 +13,23 @@ import org.jetbrains.exposed.sql.selectAll
 import org.postgresql.util.PSQLException
 import ru.polyZoj.db.*
 import ru.polyZoj.exceptions.DuplicateFieldException
-import ru.polyZoj.logger
 import ru.polyZoj.models.*
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaInstant
 import kotlin.time.toKotlinInstant
+import common.LogSender
+import common.Level
 
-class ClubRepository {
-    private val log = logger<ClubRepository>()
+class ClubRepository(private val logger: LogSender) {
+
+    fun logInfo(ctx: String, msg: String) = logger.log("club-interface", Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = logger.log("club-interface", Level.ERROR, msg, ctx)
 
     /** Create a new club and return its ID */
     @OptIn(ExperimentalTime::class)
     fun createClub(name: String, description: String, ownerId: Int): Int {
-        log.info("Creating new club: name='{}', ownerId={}", name, ownerId)
+        logInfo("createClub", "Creating new club: name='$name', ownerId=$ownerId")
         try {
             val clubId = DatabaseFactory.write {
                 ClubsTable.insertAndGetId {
@@ -42,17 +45,17 @@ class ClubRepository {
                     }
                 }
             }
-            log.info("Club created successfully with clubId={}", clubId)
+            logInfo("createClub", "Club created successfully with clubId=$clubId")
             return clubId
         } catch (e: ExposedSQLException) {
-            log.error("Error creating club: name='{}'\nerror={}", name, e.message)
+            logError("createClub", "Error creating club: name='$name'\nerror=${e.message}")
             throw e
         }
     }
 
     @OptIn(ExperimentalTime::class)
     fun addMember(clubId: Int, userId: Int): Boolean {
-        log.info("Adding member userId={} to clubId={}", userId, clubId)
+        logInfo("addMember", "Adding member userId=$userId to clubId=$clubId")
         return try {
             DatabaseFactory.write {
                 ClubMembersTable.insert {
@@ -61,17 +64,17 @@ class ClubRepository {
                     it[ClubMembersTable.joinedAt] = Clock.System.now().toJavaInstant()
                 }
             }
-            log.info("Member added successfully: clubId={}, userId={}", clubId, userId)
+            logInfo("addMember", "Member added successfully: clubId=$clubId, userId=$userId")
             true
         } catch (e: Exception) {
-            log.error("Error adding member: clubId={}, userId={}, error={}", clubId, userId, e.message)
+            logError("addMember", "Error adding member: clubId=$clubId, userId=$userId, error=${e.message}")
             false
         }
     }
 
     @OptIn(ExperimentalTime::class)
     fun removeMember(clubId: Int, userId: Int): Boolean {
-        log.info("Removing member userId={} from clubId={}", userId, clubId)
+        logInfo("removeMember", "Removing member userId=$userId from clubId=$clubId")
         return try {
             DatabaseFactory.write {
                 val deleted = ClubMembersTable.deleteWhere { 
@@ -79,18 +82,18 @@ class ClubRepository {
                 }
                 deleted > 0
             }.also { success ->
-                if (success) log.info("Member removed successfully: clubId={}, userId={}", clubId, userId)
-                else log.warn("Failed to remove member: clubId={}, userId={}", clubId, userId)
+                if (success) logInfo("removeMember", "Member removed successfully: clubId=$clubId, userId=$userId")
+                else logInfo("removeMember", "Failed to remove member: clubId=$clubId, userId=$userId")
             }
         } catch (e: Exception) {
-            log.error("Error removing member: clubId={}, userId={}, error={}", clubId, userId, e.message)
+            logError("removeMember", "Error removing member: clubId=$clubId, userId=$userId, error=${e.message}")
             false
         }
     }
     
     @OptIn(ExperimentalTime::class)
     fun getClub(clubId: Int): Club? {
-        log.info("Fetching club with clubId={}", clubId)
+        logInfo("getClub", "Fetching club with clubId=$clubId")
         return DatabaseFactory.read {
             val clubRow = ClubsTable
                 .selectAll()
@@ -111,13 +114,14 @@ class ClubRepository {
                 members = members
             )
         }.also {
-            if (it != null) log.info("Club found with clubId={}", clubId)
-            else log.info("No club found with clubId={}", clubId)
+            if (it != null) logInfo("getClub", "Club found with clubId=$clubId")
+            else logInfo("getClub", "No club found with clubId=$clubId")
         }
     }
+
     @OptIn(ExperimentalTime::class)
     fun listClubs(limit: Int, offset: Int): List<Club?> {
-        log.info("Listing clubs with pagination - limit: {}, offset: {}", limit, offset)
+        logInfo("listClubs", "Listing clubs with pagination - limit: $limit, offset: $offset")
         
         return DatabaseFactory.read {
             ClubsTable
@@ -140,7 +144,7 @@ class ClubRepository {
                     )
                 }
         }.also {
-            log.info("Returning ${it.size} clubs")
+            logInfo("listClubs", "Returning ${it.size} clubs")
         }
     }
 }

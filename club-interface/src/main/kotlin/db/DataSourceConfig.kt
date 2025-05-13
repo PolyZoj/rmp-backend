@@ -14,11 +14,9 @@ import org.jetbrains.exposed.sql.StdOutSqlLogger
 import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.addLogger
 import org.jetbrains.exposed.sql.transactions.transaction
-import ru.polyZoj.logger
 import java.sql.SQLException
 
 class DataSourceConfig {
-    private val log = logger<DataSourceConfig>()
     private val masterDs: HikariDataSource
     private val replicaDs: HikariDataSource
 
@@ -76,7 +74,6 @@ class DataSourceConfig {
             while (isActive) {
                 delay(5000)
                 useReplica = checkReplicaOnce()
-                log.debug("Checking replica on: $useReplica")
             }
         }
     }
@@ -90,7 +87,6 @@ class DataSourceConfig {
     fun <T> withWrite(block: Transaction.() -> T): T {
         val db = if (isPrimary(masterDs)) masterDb else replicaDb
         return transaction(db) {
-            log.debug("Writing database {}", db)
             addLogger(StdOutSqlLogger)
             addLogger(Slf4jSqlDebugLogger)
             block()
@@ -104,7 +100,6 @@ class DataSourceConfig {
     fun <T> withRead(block: Transaction.() -> T): T {
         val db = if (useReplica) replicaDb else masterDb
         return transaction(db) {
-            log.debug("Reading database {}", db)
             addLogger(StdOutSqlLogger)
             addLogger(Slf4jSqlDebugLogger)
             block()
