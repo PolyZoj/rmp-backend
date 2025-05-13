@@ -39,7 +39,7 @@ class AppSimulator {
                     1 -> SendFriendRequestAction(client).perform(user)
                     2 -> AcceptFriendRequestAction(client).perform(user)
                     3 -> DenyFriendRequestAction(client).perform(user)
-                    4 -> {} // другие действия
+                    4 -> {}
                 }
             }
         }
