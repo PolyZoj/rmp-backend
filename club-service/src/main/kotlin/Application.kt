@@ -14,10 +14,11 @@ import common.kafka.createKafkaProducer
 import common.DataPayload
 import common.kafka.KafkaConfig
 import ru.polyZoj.models.Club
-import ru.polyZoj.repositories.ClubDataSource
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import common.toJsonElement
+import common.Level
+import common.LogSender
 
 data class JwtConfig(
     val secret: String,
@@ -66,8 +67,12 @@ private fun Application.configureKafka() {
         createTopicIfNotExists("club-responses", 1, 3.toShort())
     }
 
+    val kafkaProducer =  createKafkaProducer()
+    val producerService = KafkaProducerService(kafkaProducer)
+    val logger = LogSender(kafkaProducer)
+    fun logInfo(ctx: String, msg: String) = logger.log("club-service", Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = logger.log("club-service", Level.ERROR, msg, ctx)
 
-    val producerService = KafkaProducerService(createKafkaProducer())
     val gatewayConsumerService = KafkaConsumerService(
         consumer = createKafkaConsumer("club-service-consumer"),
         topics = listOf("club-gateway-requests")
@@ -80,11 +85,11 @@ private fun Application.configureKafka() {
 
 
     gatewayConsumerService.startConsuming { conversationId, payload ->
-        handleKafkaGatewayMessage(conversationId, payload, producerService)
+        handleKafkaGatewayMessage(conversationId, payload, producerService, logger)
     }
 
     interfaceConsumerService.startConsuming { conversationId, payload ->
-        handleKafkaInterfaceMessage(conversationId, payload, producerService)
+        handleKafkaInterfaceMessage(conversationId, payload, producerService, logger)
     }
 }
 
@@ -92,10 +97,10 @@ private fun Application.configureKafka() {
 private fun handleKafkaGatewayMessage(
     conversationId: String,
     payload: DataPayload,
-    producer: KafkaProducerService
+    producer: KafkaProducerService,
+    logger: LogSender
 ) {
-    println("Consumed message -> ConversationID: $conversationId, Message: $payload.message")
-    
+    logger.log("club-service", Level.INFO, "Consumed message -> ConversationID: $conversationId, Message: $payload.message", "message consumed")
     try {
         when (payload.message.lowercase()) {
             "create" -> handleCreateClub(payload, conversationId, producer)
@@ -113,10 +118,10 @@ private fun handleKafkaGatewayMessage(
 private fun handleKafkaInterfaceMessage(
     conversationId: String,
     payload: DataPayload,
-    producer: KafkaProducerService
+    producer: KafkaProducerService,
+    logger: LogSender
 ) {
-    println("Consumed message -> ConversationID: $conversationId, Message: $payload.message")
-    
+    logger.log("club-service", Level.INFO, "Consumed message -> ConversationID: $conversationId, Message: $payload.message", "message consumed")
     try {
         when (payload.message.lowercase()) {
             "clubcreated" -> {
@@ -173,17 +178,11 @@ private fun handleCreateClub(
     val name = payload.getParam<String>("name").orEmpty()
     val description = payload.getParam<String>("description").orEmpty()
     val ownerId = payload.getParam<String>("ownerId").orEmpty()
-    if (name.isBlank() || ownerId.isBlank() || ownerId.toDoubleOrNull() == null) {
+    if (name.isBlank() || description.isBlank() || ownerId.toDoubleOrNull() == null) {
         sendError(conversationId, "Missing required params or Id not a number", producer)
         return
     }
 
-    // val club = ClubDataSource.createClub(name, description, ownerId)
-    // val response = DataPayload.build("created") {
-    //     param("id", club.id)
-    //     param("name", club.name)
-    // }
-    // producer.send("club-gateway-responses", conversationId, response)
     producer.send("club-requests", conversationId, payload)
 }
 
@@ -192,14 +191,7 @@ private fun handleListClubs(
     conversationId: String,
     producer: KafkaProducerService
 ) {
-    // val limit = payload.getParam<Int>("limit") ?: 10
-    // val offset = payload.getParam<Int>("offset") ?: 0
 
-    // val clubs = ClubDataSource.getClubs(limit, offset)
-    
-    // val response = DataPayload.build("clubsList") {
-    //     param("clubs", clubs)
-    // }
     producer.send("club-requests", conversationId, payload)
 }
 

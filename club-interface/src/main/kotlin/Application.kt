@@ -14,8 +14,8 @@ import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
+import common.Level
+import common.LogSender
 import ru.polyZoj.models.*
 import java.time.LocalDate
 import io.ktor.http.HttpStatusCode
@@ -24,7 +24,6 @@ fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
 }
 
-inline fun <reified T> logger(): Logger = LoggerFactory.getLogger(T::class.java)
 
 fun Application.module() {
 
@@ -36,7 +35,6 @@ fun Application.module() {
         })
     }
 
-    val log = logger<Application>()
 
     val ds = DataSourceConfig()
     DatabaseFactory.init(ds)
@@ -44,17 +42,21 @@ fun Application.module() {
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)
 
+    val logger = LogSender(kafkaProducer)
+    fun logInfo(ctx: String, msg: String) = logger.log("club-interface", Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = logger.log("club-interface", Level.ERROR, msg, ctx)
+
     val kafkaConsumer = createKafkaConsumer("club-interface-consumer")
     val consumerService = KafkaConsumerService(kafkaConsumer, listOf("club-requests"))
 
-    val clubRepository = ClubRepository()
+    val clubRepository = ClubRepository(logger)
 
     consumerService.startConsuming { conversationId, data ->
-        log.info("Received message: $data")
+        logInfo("message consumed", "Received message: $data")
         val command = data.message
         when (command.lowercase()) {
             "create" -> {
-                log.info("Club create command received, data: $data")
+                logInfo("create command", "Club create command received, data: $data")
                 val ownerId = data.getParam<String>("ownerId")
                 val description = data.getParam<String>("description")
                 val name = data.getParam<String>("name")
@@ -77,7 +79,7 @@ fun Application.module() {
                             description = "Invalid credentials"
                         )
                     }
-                    log.info("sending response to club-responses: $response")
+                    logInfo("sending message", "sending response to club-responses: $response")
                     producerService.send("club-responses", conversationId, response)
                     producerService.send(
                         "club-user-bridge",
@@ -91,7 +93,7 @@ fun Application.module() {
             }
 
             "listclubs" -> {
-                log.info("List clubs command received, data: $data")
+                logInfo("list command", "List clubs command received, data: $data")
                 val limit = data.getParam<Int>("limit")
                 val offset = data.getParam<Int>("offset")
                 
@@ -106,13 +108,13 @@ fun Application.module() {
                     val response = DataPayload.build("clubsListed") {
                         param("clubs", clubs)
                     }
-                    log.info("Sending list of ${clubs.size} clubs")
+                    logInfo("sending message", "Sending list of ${clubs.size} clubs")
                     producerService.send("club-responses", conversationId, response)
                 }
             }
 
             "addmember" -> {
-                log.info("Add member command received, data: $data")
+                logInfo("add member command", "Add member command received, data: $data")
                 val clubId = data.getParam<Int>("clubId")
                 val userId = data.getParam<Int>("userId")
                 if (clubId == null || userId == null) {
@@ -148,7 +150,7 @@ fun Application.module() {
 
 
             "removemember" -> {
-                log.info("Remove member command received, data: $data")
+                logInfo("Remove member command", "Remove member command received, data: $data")
                 val clubId = data.getParam<Int>("clubId")
                 val userId = data.getParam<Int>("userId")
                 if (clubId == null || userId == null) {
@@ -183,7 +185,7 @@ fun Application.module() {
             }
 
             "getinfo" -> {
-                log.info("Get club info command received, data: $data")
+                logInfo("Get club command", "Get club command received, data: $data")
                 val clubId = data.getParam<String>("clubId")
                 if (clubId == null) {
                     val response = DataPayload.error(
@@ -212,7 +214,7 @@ fun Application.module() {
                     HttpStatusCode.BadRequest,
                     description = "Invalid message"
                 )
-                log.error("Unknown command: $command")
+                logError("error", "Unknown command: $command")
                 producerService.send("club-responses", conversationId, err)
             }
         }
