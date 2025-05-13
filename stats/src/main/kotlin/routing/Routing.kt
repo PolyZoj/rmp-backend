@@ -29,9 +29,19 @@ import java.time.format.DateTimeFormatter
 
 val logger = LoggerFactory.getLogger("StatsService")
 
+class KafkaClients(
+    val producerWrite: KafkaProducer<String, String>,
+    val consumerWrite: KafkaConsumer<String, String>,
+    val producerRead: KafkaProducer<String, String>,
+    val consumerRead: KafkaConsumer<String, String>,
+    val producerReadDaily: KafkaProducer<String, String>,
+    val consumerReadDaily: KafkaConsumer<String, String>
+)
+
 fun Application.configureRouting() {
 
     val json = Json { ignoreUnknownKeys = true }
+    
     val producerWrite = KafkaProducer<String, String>(producerConfig())
     val consumerWrite = KafkaConsumer<String, String>(consumerConfig("stats-consumer-write"))
     val producerRead = KafkaProducer<String, String>(producerConfig())
@@ -268,12 +278,53 @@ fun Application.configureRouting() {
                         )
                     }
                 }
+
+                post("/workout") {
+
+                    logger.info("Good")
+
+                    val requestId = UUID.randomUUID().toString()
+                    val request = call.receive<AddWorkoutRequest>()
+
+                    val payload = DataPayload(
+                        message = "add_workout",
+                        params = listOf(
+                            request.id,
+                            request.type,
+                            request.timeInSeconds
+                        )
+                    )
+
+                    producerWrite.send(ProducerRecord(
+                        "stats-req-write",
+                        requestId,
+                        json.encodeToString(payload)
+                    ))
+
+                    val response = withTimeoutOrNull(5000) {
+                        CompletableDeferred<DataPayload>().apply {
+                            responses[requestId] = this
+                        }.await()
+                    }
+
+                    when {
+                        response == null -> call.respond(
+                            HttpStatusCode.GatewayTimeout,
+                            DataPayload("timeout", emptyList())
+                        )
+                        response.message == "success" -> call.respond(response)
+                        else -> call.respond(
+                            HttpStatusCode.InternalServerError,
+                            response
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-private fun parseStatsResponse(response: DataPayload): StatsResponse {
+internal fun parseStatsResponse(response: DataPayload): StatsResponse {
     return try {
         StatsResponse(
             level = response.params[1].toInt(),
@@ -297,7 +348,7 @@ private fun parseStatsResponse(response: DataPayload): StatsResponse {
     }
 }
 
-private fun parseDailyStatsResponse(response: DataPayload): DailyStatsResponse {
+internal fun parseDailyStatsResponse(response: DataPayload): DailyStatsResponse {
     return try {
         DailyStatsResponse(
             date = response.params[1],

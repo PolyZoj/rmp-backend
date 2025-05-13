@@ -25,7 +25,7 @@ object ReadEventsDaily {
     """
 }
 
-class StatsReaderDaily(
+public class StatsReaderDaily(
     private val connection: Connection,
     private val producer: KafkaProducer<String, String>
 ) {
@@ -78,13 +78,13 @@ class StatsReaderDaily(
         }
     }
 
-    private fun getFormattedTimestamps(date: LocalDate): Pair<String, String> {
+    internal fun getFormattedTimestamps(date: LocalDate): Pair<String, String> {
         val startOfDay = date.atStartOfDay().format(dateTimeFormatter)
         val endOfDay = date.plusDays(1).atStartOfDay().format(dateTimeFormatter)
         return startOfDay to endOfDay
     }
 
-    private fun buildResponse(
+    internal fun buildResponse(
         userId: String,
         dateString: String,
         statsMap: Map<String, Float>
