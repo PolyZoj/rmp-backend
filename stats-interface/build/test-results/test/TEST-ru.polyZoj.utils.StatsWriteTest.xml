@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ru.polyZoj.utils.StatsWriteTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2025-05-13T16:56:48.408Z" hostname="MacBook-Pro-Roman.local" time="0.014">
+  <properties/>
+  <testcase name="processWriteEvent with invalid workout type should send error()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.002"/>
+  <testcase name="parseEvents for water should create single event()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.001"/>
+  <testcase name="processWriteEvent with steps should add calorie event()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.004"/>
+  <testcase name="parseEvents for easy workout should calculate correct calories()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.001"/>
+  <testcase name="parseEvents with invalid value should return null()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.001"/>
+  <testcase name="processWriteEvent with valid workout event should insert records()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.001"/>
+  <testcase name="processWriteEvent with database error should send error()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.001"/>
+  <testcase name="processWriteEvent with invalid params count should send error()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.001"/>
+  <testcase name="parseEvents for medium workout should calculate correct calories()" classname="ru.polyZoj.utils.StatsWriteTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

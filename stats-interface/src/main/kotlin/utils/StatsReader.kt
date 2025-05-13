@@ -21,7 +21,7 @@ object ReadEvents {
     """
 }
 
-class StatsReader(
+public class StatsReader(
     private val connection: Connection,
     private val producer: KafkaProducer<String, String>
 ) {

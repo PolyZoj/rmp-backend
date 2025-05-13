@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="x-ua-compatible" content="IE=edge"/>
+<title>Test results - Class ru.polyZoj.routing.ParsingTests</title>
+<link href="../css/base-style.css" rel="stylesheet" type="text/css"/>
+<link href="../css/style.css" rel="stylesheet" type="text/css"/>
+<script src="../js/report.js" type="text/javascript"></script>
+</head>
+<body>
+<div id="content">
+<h1>Class ru.polyZoj.routing.ParsingTests</h1>
+<div class="breadcrumbs">
+<a href="../index.html">all</a> &gt; 
+<a href="../packages/ru.polyZoj.routing.html">ru.polyZoj.routing</a> &gt; ParsingTests</div>
+<div id="summary">
+<table>
+<tr>
+<td>
+<div class="summaryGroup">
+<table>
+<tr>
+<td>
+<div class="infoBox" id="tests">
+<div class="counter">3</div>
+<p>tests</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="failures">
+<div class="counter">0</div>
+<p>failures</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="ignored">
+<div class="counter">0</div>
+<p>ignored</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="duration">
+<div class="counter">0.224s</div>
+<p>duration</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</td>
+<td>
+<div class="infoBox success" id="successRate">
+<div class="percent">100%</div>
+<p>successful</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="tab-container">
+<ul class="tabLinks">
+<li>
+<a href="#">Tests</a>
+</li>
+<li>
+<a href="#">Standard output</a>
+</li>
+</ul>
+<div class="tab">
+<h2>Tests</h2>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Duration</th>
+<th>Result</th>
+</tr>
+</thead>
+<tr>
+<td class="success">parseDailyStatsResponse with valid data returns correct response</td>
+<td class="success">0.004s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">parseStatsResponse with insufficient params returns defaults</td>
+<td class="success">0.001s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">parseStatsResponse with valid data returns correct StatsResponse</td>
+<td class="success">0.219s</td>
+<td class="success">passed</td>
+</tr>
+</table>
+</div>
+<div class="tab">
+<h2>Standard output</h2>
+<span class="code">
+<pre>19:45:44,897 |-INFO in ch.qos.logback.classic.LoggerContext[default] - This is logback-classic version 1.5.16
+19:45:44,898 |-INFO in ch.qos.logback.classic.util.ContextInitializer@750f9258 - No custom configurators were discovered as a service.
+19:45:44,898 |-INFO in ch.qos.logback.classic.util.ContextInitializer@750f9258 - Trying to configure with ch.qos.logback.classic.joran.SerializedModelConfigurator
+19:45:44,898 |-INFO in ch.qos.logback.classic.util.ContextInitializer@750f9258 - Constructed configurator of type class ch.qos.logback.classic.joran.SerializedModelConfigurator
+19:45:44,902 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback-test.scmo]
+19:45:44,902 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback.scmo]
+19:45:44,907 |-INFO in ch.qos.logback.classic.util.ContextInitializer@750f9258 - ch.qos.logback.classic.joran.SerializedModelConfigurator.configure() call lasted 4 milliseconds. ExecutionStatus=INVOKE_NEXT_IF_ANY
+19:45:44,907 |-INFO in ch.qos.logback.classic.util.ContextInitializer@750f9258 - Trying to configure with ch.qos.logback.classic.util.DefaultJoranConfigurator
+19:45:44,907 |-INFO in ch.qos.logback.classic.util.ContextInitializer@750f9258 - Constructed configurator of type class ch.qos.logback.classic.util.DefaultJoranConfigurator
+19:45:44,908 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback-test.xml]
+19:45:44,911 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Found resource [logback.xml] at [file:/Users/romankrohin/Desktop/school/rmp-backend/stats/build/resources/main/logback.xml]
+19:45:44,912 |-WARN in ch.qos.logback.classic.util.DefaultJoranConfigurator@45523b5c - Resource [logback.xml] occurs multiple times on the classpath.
+19:45:44,912 |-WARN in ch.qos.logback.classic.util.DefaultJoranConfigurator@45523b5c - Resource [logback.xml] occurs at [jar:file:/Users/romankrohin/.gradle/caches/modules-2/files-2.1/io.swagger.codegen.v3/swagger-codegen-generators/1.0.56/934e0ce8fe349135f121a5a834f032ab98a1c2f2/swagger-codegen-generators-1.0.56.jar!/logback.xml]
+19:45:44,912 |-WARN in ch.qos.logback.classic.util.DefaultJoranConfigurator@45523b5c - Resource [logback.xml] occurs at [file:/Users/romankrohin/Desktop/school/rmp-backend/stats/build/resources/main/logback.xml]
+19:45:45,003 |-INFO in ch.qos.logback.core.model.processor.AppenderModelHandler - Processing appender named [STDOUT]
+19:45:45,003 |-INFO in ch.qos.logback.core.model.processor.AppenderModelHandler - About to instantiate appender of type [ch.qos.logback.core.ConsoleAppender]
+19:45:45,009 |-INFO in ch.qos.logback.core.model.processor.ImplicitModelHandler - Assuming default type [ch.qos.logback.classic.encoder.PatternLayoutEncoder] for [encoder] property
+19:45:45,048 |-INFO in ch.qos.logback.core.ConsoleAppender[STDOUT] - BEWARE: Writing to the console can be very slow. Avoid logging to the 
+19:45:45,048 |-INFO in ch.qos.logback.core.ConsoleAppender[STDOUT] - console in production environments, especially in high volume systems.
+19:45:45,048 |-INFO in ch.qos.logback.core.ConsoleAppender[STDOUT] - See also https://logback.qos.ch/codes.html#slowConsole
+19:45:45,048 |-INFO in ch.qos.logback.classic.model.processor.RootLoggerModelHandler - Setting level of ROOT logger to INFO
+19:45:45,048 |-INFO in ch.qos.logback.core.model.processor.AppenderRefModelHandler - Attaching appender named [STDOUT] to Logger[ROOT]
+19:45:45,049 |-INFO in ch.qos.logback.classic.model.processor.LoggerModelHandler - Setting level of logger [org.eclipse.jetty] to INFO
+19:45:45,049 |-INFO in ch.qos.logback.classic.model.processor.LoggerModelHandler - Setting level of logger [io.netty] to INFO
+19:45:45,049 |-INFO in ch.qos.logback.core.model.processor.DefaultProcessor@5d24a97d - End of configuration.
+19:45:45,049 |-INFO in ch.qos.logback.classic.joran.JoranConfigurator@7f8e1fbc - Registering current configuration as safe fallback point
+19:45:45,050 |-INFO in ch.qos.logback.classic.util.ContextInitializer@750f9258 - ch.qos.logback.classic.util.DefaultJoranConfigurator.configure() call lasted 142 milliseconds. ExecutionStatus=DO_NOT_INVOKE_NEXT_IF_ANY
+
+</pre>
+</span>
+</div>
+</div>
+<div id="footer">
+<p>
+<div>
+<label class="hidden" id="label-for-line-wrapping-toggle" for="line-wrapping-toggle">Wrap lines
+<input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
+</label>
+</div>Generated by 
+<a href="https://www.gradle.org">Gradle 8.14</a> at 13 мая 2025 г., 19:45:45</p>
+</div>
+</div>
+</body>
+</html>

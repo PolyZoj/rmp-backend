@@ -21,7 +21,7 @@ object WriteEvents {
     """
 }
 
-class StatsWriter(
+public class StatsWriter(
     private val connection: Connection,
     private val producer: KafkaProducer<String, String>
 ) {
@@ -72,7 +72,7 @@ class StatsWriter(
         }
     }
 
-    private fun parseEvents(
+    internal fun parseEvents(
         userId: String,
         messageType: String,
         type: String,
@@ -135,7 +135,7 @@ class StatsWriter(
         }
     }
 
-    private data class Event(
+    internal data class Event(
         val userId: String,
         val type: String,
         val value: Double
@@ -149,7 +149,7 @@ class StatsWriter(
         ))
     }
 
-    private fun sendError(key: String, error: String) {
+    internal fun sendError(key: String, error: String) {
         producer.send(ProducerRecord(
             "stats-resp-write",
             key,
