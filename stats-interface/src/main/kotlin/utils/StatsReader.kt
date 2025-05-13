@@ -33,7 +33,7 @@ public class StatsReader(
     val logger = LogSender(kafkaProducer)
 
     fun log(level: Level, message: String, context: String) {
-        logger.log("user", level, message, context)
+        logger.log("stats-interface", level, message, context)
     }
 
     fun logRequest(context: String) =

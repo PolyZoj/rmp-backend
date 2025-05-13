@@ -8,10 +8,8 @@ import org.jetbrains.exposed.sql.StdOutSqlLogger
 import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.addLogger
 import org.jetbrains.exposed.sql.transactions.transaction
-import ru.polyZoj.logger
 
 class DataSourceConfig {
-    private val log = logger<DataSourceConfig>()
     private val allHosts = "${env("DB_HOST_MASTER")}:${env("DB_PORT_MASTER")}," +
             "${env("DB_HOST_REPLICA")}:${env("DB_PORT_REPLICA")}"
     private val masterDs: HikariDataSource
@@ -46,7 +44,6 @@ class DataSourceConfig {
      */
     fun <T> withWrite(block: Transaction.() -> T): T {
         return transaction(masterDb) {
-            log.debug("Writing database {}", masterDb)
             addLogger(StdOutSqlLogger)
             addLogger(Slf4jSqlDebugLogger)
             block()
@@ -59,7 +56,6 @@ class DataSourceConfig {
      */
     fun <T> withRead(block: Transaction.() -> T): T {
         return transaction(replicaDb) {
-            log.debug("Reading database {}", replicaDb)
             addLogger(StdOutSqlLogger)
             addLogger(Slf4jSqlDebugLogger)
             block()

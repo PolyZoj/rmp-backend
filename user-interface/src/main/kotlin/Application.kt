@@ -15,7 +15,7 @@ import common.kafka.KafkaConsumerService
 import common.kafka.KafkaProducerService
 import common.kafka.createKafkaConsumer
 import common.kafka.createKafkaProducer
-import common.kafka.topics.USER_SERVICE_RES
+import common.kafka.topics.*
 import common.models.FriendshipStatus
 import common.models.UserBasicInfo
 import io.ktor.http.HttpStatusCode
@@ -49,7 +49,7 @@ fun Application.module() {
     fun logError(ctx: String, msg: String) = logger.log("user-interface", Level.ERROR, msg, ctx)
 
     val kafkaConsumer = createKafkaConsumer("user-interface-consumer")
-    val consumerService = KafkaConsumerService(kafkaConsumer, listOf("user-requests"))
+    val consumerService = KafkaConsumerService(kafkaConsumer, listOf(USER_SERVICE_REQ))
 
     val userRepository = UserRepository(logger)
 

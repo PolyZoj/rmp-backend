@@ -39,7 +39,6 @@ class UserRepository(private val logger: LogSender) {
      * - usernameOf:userId:<userId>
      * - passwordOf:userId:<userId>
      * - userDTOOf:userId:<userId>
-     * - friendshipStatusFrontEndOf:<selfId>:<friendId>
      * - friendshipRequestsOf:userId:<selfId>
      * - friendsOf:userId:<userId>
      * - allIds
@@ -226,7 +225,7 @@ class UserRepository(private val logger: LogSender) {
             redis.setJson("usernameOf:userId:${newUserId}", reg.username, 600)
             redis.setJson("userIdOf:username:${reg.username}", newUserId, 600)
             redis.setJson("passwordOf:userId:${newUserId}", reg.password, 600)
-
+            redis.del("allIds")
             logInfo(ctx, "User registered successfully (userId=$newUserId)")
             return newUserId
         } catch (e: ExposedSQLException) {
@@ -337,7 +336,10 @@ class UserRepository(private val logger: LogSender) {
                 redis.del(
                     "userDTOOf:userId:$userId",
                     "usernameOf:userId:$userId",
-                    "passwordOf:userId:$userId"
+                    "passwordOf:userId:$userId",
+                    "allIds",
+                    "friendshipRequestsOf:userId:$userId",
+                    "friendsOf:userId:$userId"
                 )
                 true
             } else {
@@ -405,17 +407,7 @@ class UserRepository(private val logger: LogSender) {
         logDebug(ctx, "Entering $ctx with selfId={$selfId}, friendId={$friendId}")
 
         if (selfId == friendId) {
-            logDebug(ctx, "Setting cache for friendshipStatusFrontEndOf:$selfId:$friendId")
-            redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", FriendshipStatusFrontEnd.SELF, 600)
             return FriendshipStatusFrontEnd.SELF
-        }
-
-        val cachedStatus = redis.getJson<FriendshipStatusFrontEnd>("friendshipStatusFrontEndOf:$selfId:$friendId")
-        if (cachedStatus != null) {
-            logInfo(ctx, "HIT: Found friendship status in cache for selfId=$selfId and friendId=$friendId")
-            return cachedStatus
-        } else {
-            logWarn(ctx, "MISS: Friendship status not in cache for selfId=$selfId and friendId=$friendId")
         }
 
         return try {
@@ -441,8 +433,6 @@ class UserRepository(private val logger: LogSender) {
                 }
             }
             logInfo(ctx, "Friendship status determined: $status for selfId=$selfId and friendId=$friendId")
-            logDebug(ctx, "Setting cache for friendshipStatusFrontEndOf:$selfId:$friendId")
-            redis.setJson("friendshipStatusFrontEndOf:$selfId:$friendId", status, 600)
             status
         } catch (e: Exception) {
             logError(ctx, "Error fetching friendship status for selfId=$selfId and friendId=$friendId: ${e.message}")
@@ -511,8 +501,6 @@ class UserRepository(private val logger: LogSender) {
         val ctx = "deleteFriendshipCache"
         logDebug(ctx, "Entering $ctx for uId=$uId and fId=$fId – deleting related cache keys")
         redis.del(
-            "friendshipStatusFrontEndOf:$fId:$uId",
-            "friendshipStatusFrontEndOf:$uId:$fId",
             "friendshipRequestsOf:userId:$fId",
             "friendshipRequestsOf:userId:$uId",
             "friendsOf:userId:$fId",
@@ -690,6 +678,7 @@ class UserRepository(private val logger: LogSender) {
                 UsersTable.update({ UsersTable.id eq userId }) { it[UsersTable.clubId] = clubId }
             }
             logInfo(ctx, "Club ID updated to $clubId for userId=$userId")
+            redis.del("userDTOOf:userId:$userId")
             true
         } catch (e: Exception) {
             logError(ctx, "Error updating club ID for userId=$userId: ${e.message}")
@@ -715,7 +704,7 @@ class UserRepository(private val logger: LogSender) {
             }
             logInfo(ctx, "Fetched ${list.size} user IDs from database")
             logDebug(ctx, "Setting cache for allIds")
-            redis.setJson("allIds", list)
+            redis.setJson("allIds", list, 60)
             list
         } catch (e: Exception) {
             logError(ctx, "Error fetching all user IDs: ${e.message}")

@@ -63,7 +63,7 @@ fun Application.module() {
         pendingResponses.remove(conversationId)
     }
 
-    fun forwardToUserService(
+    fun forwardToUserInterfaceService(
         original: DataPayload,
         conversationId: String,
         onSuccess: (DataPayload) -> DataPayload,
@@ -135,7 +135,7 @@ fun Application.module() {
                     param("password", password)
                 }
 
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = requestPayload,
                     conversationId = conversationId,
                     onSuccess = { serviceResp ->
@@ -212,7 +212,7 @@ fun Application.module() {
                 val requestPayload = DataPayload.build(command) {
                     param("user_registration", userRegistration)
                 }
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = requestPayload,
                     conversationId = conversationId,
                     onSuccess = { serviceResp ->
@@ -249,7 +249,7 @@ fun Application.module() {
         when (command) {
 
             "deleteUser", "acceptFriendRequest", "denyFriendRequest", "addFriendRequest", "removeFriend" ->
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = data,
                     conversationId = conversationId,
                     onSuccess = { DataPayload.build("success") { param("success", true) } },
@@ -259,7 +259,7 @@ fun Application.module() {
 
             /** Needs userId and selfId, returns flattened userDTO + status */
             "userInfo" ->
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = data,
                     conversationId = conversationId,
                     onSuccess = { it }, // pass‑through full payload
@@ -269,7 +269,7 @@ fun Application.module() {
 
             /** Needs username, returns userId */
             "findByUsername" ->
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = data,
                     conversationId = conversationId,
                     requiredParam = "username",
@@ -307,7 +307,7 @@ fun Application.module() {
                     param("user_id", data.getParam<String>("user_id"))
                     param("user_data", userUpdatable)
                 }
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = dataPayload,
                     conversationId = conversationId,
                     onSuccess = { DataPayload.build("success") { param("success", true) } },
@@ -318,7 +318,7 @@ fun Application.module() {
 
             /** Needs userId, returns List<Pair<Int, String>> */
             "getFriendRequests" ->
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = data,
                     conversationId = conversationId,
                     onSuccess = { resp ->
@@ -330,7 +330,7 @@ fun Application.module() {
 
             /** Needs userId, returns List<UserBasicInfo> */
             "getFriendsList" ->
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = data,
                     conversationId = conversationId,
                     onSuccess = { resp ->
@@ -352,7 +352,7 @@ fun Application.module() {
                     producerService.send(USER_GATEWAY_RES, conversationId, msg)
                     return@startConsuming
                 }
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = data,
                     conversationId = conversationId,
                     onSuccess = { resp ->
@@ -395,7 +395,7 @@ fun Application.module() {
                     param("user_id", userId.toString())
                     param("club_id", clubId.toString())
                 }
-                forwardToUserService(
+                forwardToUserInterfaceService(
                     original = requestPayload,
                     conversationId = conversationId,
                     onSuccess = { DataPayload.build("success") { param("success", true) } },
@@ -403,6 +403,10 @@ fun Application.module() {
                     errorDescription = "Error updating club id",
                     replyTopic = "club-user-bridge"
                 )
+            }
+
+            "success" -> {
+                logInfo(command, "Success")
             }
 
             else -> {

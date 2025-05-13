@@ -10,3 +10,12 @@ const val USER_SERVICE_RES = "user-responses"
 
 const val AUTH_REQ = "auth-requests"
 const val AUTH_RES = "auth-responses"
+
+const val CHALLENGES_GATEWAY_REQ = "challenges-gateway-requests"
+const val CHALLENGES_GATEWAY_RES = "challenges-gateway-responses"
+
+const val CHALLENGES_SERVICE_REQ = "challenges-requests"
+const val CHALLENGES_SERVICE_RES = "challenges-responses"
+
+const val CHALLENGES_STATS_REQ = "challenges-stats-requests"
+const val CHALLENGES_STATS_RES = "challenges-stats-responses"

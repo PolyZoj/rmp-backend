@@ -1,5 +1,7 @@
 package ru.polyZoj.repositories
 
+import common.Level
+import common.LogSender
 import common.models.Achievement
 import common.models.AchievementStatus
 import org.jetbrains.exposed.sql.ResultRow
@@ -12,17 +14,20 @@ import ru.polyZoj.cache.getJson
 import ru.polyZoj.cache.setJson
 import ru.polyZoj.db.AchievementsTable
 import ru.polyZoj.db.DatabaseFactory
-import ru.polyZoj.logger
 import java.time.LocalDate
 
-class ChallengesRepository {
-    private val log = logger<ChallengesRepository>()
+class ChallengesRepository(private val logger: LogSender) {
 
     /**
      * Cache keys:
      * - achievementsOf:userId:<userId>
      */
     private val redis = RedisFactory.sync
+
+    fun logInfo (ctx: String, msg: String) = logger.log("challenges-interface", Level.INFO,  msg, "ChallengesRepository: $ctx")
+    fun logError(ctx: String, msg: String) = logger.log("challenges-interface", Level.ERROR, msg, "ChallengesRepository: $ctx")
+    fun logDebug(ctx: String, msg: String) = logger.log("challenges-interface", Level.DEBUG, msg, "ChallengesRepository: $ctx")
+    fun logWarn (ctx: String, msg: String) = logger.log("challenges-interface", Level.WARN,  msg, "ChallengesRepository: $ctx")
 
     private fun ResultRow.rowToAchievement(): Achievement {
         return Achievement(
@@ -41,14 +46,15 @@ class ChallengesRepository {
 
     /** Get all achievements for user by userId **/
     suspend fun getAllAchievements(userId: Int): List<Achievement> {
-        log.debug("Entering getAllAchievements with user id: $userId")
+        val ctx = "getAllAchievements"
+        logDebug(ctx, "Entering $ctx with userId=$userId")
 
         val cachedAchs = redis.getJson<List<Achievement>>("achievementsOf:userId:$userId")
         if (cachedAchs != null) {
-            log.info("Found {} achievements", cachedAchs.size)
+            logInfo(ctx, "HIT: Found ${cachedAchs.size} achievements for userId=$userId in cache")
             return cachedAchs
         } else {
-            log.debug("No achievements found")
+            logWarn(ctx, "MISS: Achievements for userId=$userId not found in cache")
         }
 
         val achievements: List<Achievement> = DatabaseFactory.read {
@@ -58,11 +64,7 @@ class ChallengesRepository {
                     try {
                         row.rowToAchievement()
                     } catch (e: Exception) {
-                        log.error(
-                            "Failed to map ResultRow → Achievement for userId={}",
-                            userId,
-                            e
-                        )
+                        logError(ctx, "Failed to map ResultRow→Achievement for userId=$userId: ${e.message}")
                         null
                     }
                 }
@@ -75,7 +77,8 @@ class ChallengesRepository {
 
     /** Get all achievements for user by userId where given date is within [start_date, end_date] **/
     suspend fun getAchievementsByDate(userId: Int, date: LocalDate): List<Achievement> {
-        log.debug("Entering getAchievementsByDate with user id: {}, date: {}", userId, date)
+        val ctx = "getAchievementsByDate"
+        logDebug(ctx, "Entering $ctx with userId=$userId, date=$date")
 
         val achievements: List<Achievement> = DatabaseFactory.read {
             AchievementsTable.selectAll()
@@ -88,22 +91,23 @@ class ChallengesRepository {
                     try {
                         row.rowToAchievement()
                     } catch (e: Exception) {
-                        log.error(
-                            "Failed to map ResultRow → Achievement for userId={}",
-                            userId,
-                            e
-                        )
+                        logError(ctx, "Failed to map ResultRow→Achievement for userId=$userId: ${e.message}")
                         null
                     }
                 }
         }
-
+        if (achievements.isNotEmpty()) {
+            logInfo(ctx, "Fetched ${achievements.size} achievements active on $date for userId=$userId")
+        } else {
+            logError(ctx, "No achievements active on $date for userId=$userId")
+        }
         return achievements
     }
 
     /** Set achievements as completed **/
     suspend fun setAchievementsAsCompleted(achievement: Achievement): Int {
-        log.debug("Entering setAchievementsAsCompleted with achievementId: {}", achievement.id)
+        val ctx = "setAchievementsAsCompleted"
+        logDebug(ctx, "Entering $ctx with achievementId=${achievement.id}")
         val rows = DatabaseFactory.write {
             AchievementsTable.update({
                 (AchievementsTable.id eq achievement.id?.toInt())
@@ -111,13 +115,21 @@ class ChallengesRepository {
                 it[status] = AchievementStatus.COMPLETED
             }
         }
+        if (rows > 0) {
+            logInfo(ctx, "Marked achievementId=${achievement.id} as COMPLETED (rows=$rows)")
+        } else {
+            logError(ctx, "Failed to mark achievementId=${achievement.id} as COMPLETED – no rows updated")
+        }
+
+        logDebug(ctx, "Deleting cache for achievementsOf:userId:${achievement.userId}")
         redis.del("achievementsOf:userId:${achievement.userId}")
         return rows
     }
 
     /** Add achievement **/
     suspend fun addAchievement(achievement: Achievement): Achievement? {
-        log.debug("Entering addAchievement with achievement: {}", achievement)
+        val ctx = "addAchievement"
+        logDebug(ctx, "Entering $ctx with achievement=${achievement.title}")
 
         val inserted: ResultRow? = try {
             DatabaseFactory.write {
@@ -134,7 +146,7 @@ class ChallengesRepository {
                 }.resultedValues?.firstOrNull()
             }
         } catch (e: Exception) {
-            log.error("Failed to insert achievement", e)
+            logError(ctx, "Error inserting achievement for userId=${achievement.userId}: ${e.message}")
             null
         }
 
@@ -148,7 +160,8 @@ class ChallengesRepository {
      *  end_date >= date
      **/
     suspend fun getWeeklyAchievements(userId: Int, date: LocalDate): List<Achievement> {
-        log.debug("Entering getWeekAchievements with user id: {}, date: {}", userId, date)
+        val ctx = "getWeeklyAchievements"
+        logDebug(ctx, "Entering $ctx with userId=$userId, date=$date")
 
         // compute the earliest start date we allow (no more than 7 days before `date`)
         val weekStart = date.minusDays(7)
@@ -165,16 +178,17 @@ class ChallengesRepository {
                     try {
                         row.rowToAchievement()
                     } catch (e: Exception) {
-                        log.error(
-                            "Failed to map ResultRow → Achievement for userId={} in getWeeklyAchievements",
-                            userId,
-                            e
-                        )
+                        logError(ctx, "Failed to map ResultRow→Achievement for userId=$userId: ${e.message}")
                         null
                     }
                 }
         }
 
+        if (achievements.isNotEmpty()) {
+            logInfo(ctx, "Fetched ${achievements.size} weekly achievements in progress for userId=$userId")
+        } else {
+            logError(ctx, "No weekly achievements in progress for userId=$userId")
+        }
         return achievements
     }
 
@@ -183,7 +197,8 @@ class ChallengesRepository {
      *  Checks for start_date = date = end_date
      */
     suspend fun getDailyAchievements(userId: Int, date: LocalDate): List<Achievement> {
-        log.debug("Entering getDailyAchievements with user id: {}, date: {}", userId, date)
+        val ctx = "getDailyAchievements"
+        logDebug(ctx, "Entering $ctx with userId=$userId, date=$date")
 
         val achievements: List<Achievement> = DatabaseFactory.read {
             AchievementsTable
@@ -197,16 +212,17 @@ class ChallengesRepository {
                     try {
                         row.rowToAchievement()
                     } catch (e: Exception) {
-                        log.error(
-                            "Failed to map ResultRow → Achievement for userId={} in getDailyAchievements",
-                            userId,
-                            e
-                        )
+                        logError(ctx, "Failed to map ResultRow→Achievement for userId=$userId: ${e.message}")
                         null
                     }
                 }
         }
 
+        if (achievements.isNotEmpty()) {
+            logInfo(ctx, "Fetched ${achievements.size} daily achievements for userId=$userId on $date")
+        } else {
+            logError(ctx, "No daily achievements for userId=$userId on $date")
+        }
         return achievements
     }
 
