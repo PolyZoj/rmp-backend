@@ -3,11 +3,8 @@ package ru.polyZoj.routing
 import common.DataPayload
 import common.Level
 import common.LogSender
-import common.kafka.KafkaConfig
 import common.kafka.RequestProcessor
 import common.kafka.topics.*
-import common.kafka.createKafkaConsumer
-import common.kafka.createKafkaProducer
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.authenticate
@@ -29,19 +26,20 @@ import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.apache.kafka.clients.consumer.Consumer
+import org.apache.kafka.clients.producer.KafkaProducer
 import java.util.concurrent.ConcurrentHashMap
 
 
-fun Application.configureRouting() {
-    val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists(USER_GATEWAY_REQ, 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists(USER_GATEWAY_RES, 1, 3.toShort())
+fun Application.configureRouting(
+    reqProcessor: RequestProcessor,
+    kafkaProducer: KafkaProducer<String, DataPayload>,
+    kafkaConsumer: Consumer<String, DataPayload>
+) {
 
     val pendingResponses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()
-    val reqProcessor = RequestProcessor()
 
-    val kafkaProducer = createKafkaProducer()
     val logger = LogSender(kafkaProducer)
 
     fun log(level: Level, message: String, context: String) {
@@ -64,11 +62,10 @@ fun Application.configureRouting() {
         call.respond(status, message)
     }
 
-    val consumer = createKafkaConsumer("user-gateway-consumer")
     CoroutineScope(Dispatchers.IO).launch {
-        consumer.subscribe(listOf("user-responses"))
+        kafkaConsumer.subscribe(listOf("user-responses"))
         while (true) {
-            val records = consumer.poll(java.time.Duration.ofMillis(100))
+            val records = kafkaConsumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->
                 mutex.withLock {
                     try {

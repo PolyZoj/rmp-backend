@@ -1,5 +1,11 @@
 package ru.polyZoj
 
+import common.kafka.KafkaConfig
+import common.kafka.RequestProcessor
+import common.kafka.createKafkaConsumer
+import common.kafka.createKafkaProducer
+import common.kafka.topics.USER_GATEWAY_REQ
+import common.kafka.topics.USER_GATEWAY_RES
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.application.*
@@ -24,5 +30,14 @@ fun Application.module() {
     }
 
     configureSecurity()
-    configureRouting()
+
+    val kafkaConfig = KafkaConfig()
+    kafkaConfig.createTopicIfNotExists(USER_GATEWAY_REQ, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(USER_GATEWAY_RES, 1, 3.toShort())
+    val reqProcessor = RequestProcessor()
+    val kafkaProducer = createKafkaProducer()
+    val consumer = createKafkaConsumer("user-gateway-consumer")
+
+
+    configureRouting(reqProcessor, kafkaProducer, consumer)
 }

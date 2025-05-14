@@ -14,8 +14,8 @@ import kotlin.collections.set
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
 
-class RequestProcessor {
-    suspend fun processRequest(
+open class RequestProcessor {
+    open suspend fun processRequest(
         payload: DataPayload,
         topic: String,
         call: ApplicationCall,
