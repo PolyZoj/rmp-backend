@@ -32,8 +32,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 fun Application.configureRouting() {
     val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists(CHALLENGES_GATEWAY_REQ, 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists(CHALLENGES_GATEWAY_RES, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(CHALLENGES_GATEWAY_REQ, 10, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(CHALLENGES_GATEWAY_RES, 10, 3.toShort())
 
     val pendingResponses = ConcurrentHashMap<String, CompletableDeferred<DataPayload>>()
     val mutex = Mutex()

@@ -56,8 +56,8 @@ fun Application.module() {
         })
     }
     val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists(USER_SERVICE_REQ , 1, 3.toShort())
-    kafkaConfig.createTopicIfNotExists(USER_SERVICE_RES, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(USER_SERVICE_REQ , 10, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(USER_SERVICE_RES, 10, 3.toShort())
 
     val kafkaProducer = createKafkaProducer()
     val producerService = KafkaProducerService(kafkaProducer)

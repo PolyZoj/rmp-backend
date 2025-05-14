@@ -38,7 +38,7 @@ fun Application.module() {
     DBFactory.init(config)
 
     val kafkaConfig = KafkaConfig()
-    kafkaConfig.createTopicIfNotExists(LOG_REQ, 1, 3.toShort())
+    kafkaConfig.createTopicIfNotExists(LOG_REQ, 10, 3.toShort())
 
     val logConsumer = KafkaConsumerService(createKafkaConsumer("log-service-consumer"), listOf(LOG_REQ))
     logger.info("Starting")

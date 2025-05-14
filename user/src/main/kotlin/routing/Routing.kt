@@ -63,7 +63,7 @@ fun Application.configureRouting(
     }
 
     CoroutineScope(Dispatchers.IO).launch {
-        kafkaConsumer.subscribe(listOf("user-responses"))
+        kafkaConsumer.subscribe(listOf(USER_SERVICE_RES))
         while (true) {
             val records = kafkaConsumer.poll(java.time.Duration.ofMillis(100))
             records.forEach { record ->

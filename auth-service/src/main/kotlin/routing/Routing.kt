@@ -200,9 +200,9 @@ private fun Application.createKafkaTopics() {
 //    )
     // TODO: set above for production
     val topics = listOf(
-        NewTopic(AUTH_REQ, 1, 1.toShort())
+        NewTopic(AUTH_REQ, 10, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1")),
-        NewTopic(AUTH_RES, 1, 1.toShort())
+        NewTopic(AUTH_RES, 10, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1"))
     )
 
