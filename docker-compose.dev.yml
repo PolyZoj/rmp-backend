@@ -9,7 +9,7 @@ x-microservice-common: &microservice-common
     replicas: 1
     resources:
       limits:
-        cpus: "0.75"
+        cpus: "1"
         memory: 512M
   restart: on-failure
   networks:
@@ -326,8 +326,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   redis:
     image: "redis:alpine"
@@ -363,7 +363,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
+          cpus: "2"
           memory: 512M
 
   user-service:
@@ -385,8 +385,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   user:
     build:
@@ -407,8 +407,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   club-gateway:
     build:
@@ -428,8 +428,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   stats:
     build:
@@ -450,8 +450,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   stats-interface:
     build:
@@ -476,7 +476,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
+          cpus: "1"
           memory: 512M
 
   club-service:
@@ -498,8 +498,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   club-interface:
     build:
@@ -528,7 +528,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
+          cpus: "1"
           memory: 512M
 
   challenges-interface:
@@ -558,7 +558,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
+          cpus: "1"
           memory: 512M
 
   challenges-service:
@@ -580,8 +580,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   challenges:
     build:
@@ -602,8 +602,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
+          cpus: "0.5"
+          memory: 256M
 
   log-service:
     build:

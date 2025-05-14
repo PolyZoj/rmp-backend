@@ -5,5 +5,5 @@ import org.example.simulator.AppSimulator
 
 fun main() = runBlocking {
     val simulator = AppSimulator()
-    simulator.runSimulation(count = 10000)
+    simulator.runSimulation(count = 100)
 }

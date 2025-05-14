@@ -15,7 +15,7 @@ class AppSimulator {
     private val users = mutableListOf<UserSession>()
 
     suspend fun runSimulation(count: Int) = coroutineScope {
-        val registrationJobs = (41..50).map { i ->
+        val registrationJobs = (51..60).map { i ->
             async {
                 val credentials = DataGenerator.generateCredentials(i)
                 val userId = RegisterAction(client).perform(credentials)

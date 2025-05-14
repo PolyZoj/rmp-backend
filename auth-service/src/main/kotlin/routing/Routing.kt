@@ -42,7 +42,7 @@ fun Application.configureRouting() {
     val bcryptHasher = BCrypt.withDefaults()
 
     fun hash(plain: String): String =
-        bcryptHasher.hashToString(3, plain.toCharArray())
+        bcryptHasher.hashToString(4, plain.toCharArray())
 
     val producer = createKafkaProducer()
     val consumer = createKafkaConsumer("auth-consumer")
