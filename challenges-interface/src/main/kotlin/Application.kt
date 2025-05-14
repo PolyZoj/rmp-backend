@@ -17,12 +17,20 @@ import common.kafka.createKafkaProducer
 import common.kafka.topics.*
 import common.models.Achievement
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import ru.polyZoj.repositories.AchievementFactory
 import ru.polyZoj.repositories.ChallengesRepository
 import ru.polyZoj.repositories.getDailyAchievements
 import ru.polyZoj.repositories.getWeeklyAchievements
 import java.time.LocalDate
 
+object AppScopes {
+    /** Detached from individual requests, cancelled only on shutdown. */
+    val loggerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+}
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -44,8 +52,15 @@ fun Application.module() {
     val producerService = KafkaProducerService(kafkaProducer)
 
     val logger = LogSender(kafkaProducer)
-    fun logInfo(ctx: String, msg: String) =  logger.log("challenges-interface", Level.INFO, msg, ctx)
-    fun logError(ctx: String, msg: String) = logger.log("challenges-interface", Level.ERROR, msg, ctx)
+
+    fun log(level: Level, message: String, context: String) {
+        AppScopes.loggerScope.launch(Dispatchers.IO) {
+            logger.log("challenges-interface", level, message, context)
+        }
+    }
+
+    fun logInfo(ctx: String, msg: String) =  log( Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = log( Level.ERROR, msg, ctx)
 
     val kafkaConsumer = createKafkaConsumer("challenges-interface-consumer")
     val consumerService = KafkaConsumerService(kafkaConsumer, listOf(CHALLENGES_SERVICE_REQ))

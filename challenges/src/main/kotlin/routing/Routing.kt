@@ -26,9 +26,15 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import common.Level
+import kotlinx.coroutines.SupervisorJob
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import java.util.concurrent.ConcurrentHashMap
+
+object AppScopes {
+    /** Detached from individual requests, cancelled only on shutdown. */
+    val loggerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+}
 
 fun Application.configureRouting() {
     val kafkaConfig = KafkaConfig()
@@ -43,8 +49,11 @@ fun Application.configureRouting() {
     val logger = LogSender(kafkaProducer)
 
     fun log(level: Level, message: String, context: String) {
-        logger.log("challenges", level, message, context)
+        AppScopes.loggerScope.launch(Dispatchers.IO) {
+            logger.log("challenges", level, message, context)
+        }
     }
+
     fun logRequest(context: String) = log(Level.INFO, "Received request", context)
     fun logKafkaSend(context: String, payload: DataPayload) = log(Level.INFO, "Sending request to $CHALLENGES_GATEWAY_REQ: $payload", context)
     suspend fun respondError(

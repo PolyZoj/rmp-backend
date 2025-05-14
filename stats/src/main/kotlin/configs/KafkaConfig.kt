@@ -68,13 +68,13 @@ fun Application.createKafkaTopics() {
 //    )
     // TODO: set above for production
     val topics = listOf(
-        NewTopic("stats-req-write", 1, 1.toShort())
+        NewTopic("stats-req-write", 10, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1")),
-        NewTopic("stats-resp-write", 1, 1.toShort())
+        NewTopic("stats-resp-write", 10, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1")),
-        NewTopic("stats-req-read", 1, 1.toShort())
+        NewTopic("stats-req-read", 10, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1")),
-        NewTopic("stats-resp-read", 1, 1.toShort())
+        NewTopic("stats-resp-read", 10, 1.toShort())
             .configs(mapOf("min.insync.replicas" to "1"))
     )
 

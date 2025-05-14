@@ -19,6 +19,10 @@ import io.ktor.server.application.*
 import io.ktor.server.plugins.contentnegotiation.*
 import kotlinx.serialization.json.Json
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.KafkaProducer
 import ru.polyZoj.logic.AchievementCalculator
@@ -33,6 +37,11 @@ import java.util.concurrent.TimeUnit
 
 val pendingResponses = ConcurrentHashMap<String, CompletableFuture<DataPayload>>()
 
+
+object AppScopes {
+    /** Detached from individual requests, cancelled only on shutdown. */
+    val loggerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+}
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -67,8 +76,14 @@ fun Application.module() {
     val logger = LogSender(kafkaProducer)
     val calculator = AchievementCalculator(statsClient, logger)
 
-    fun logInfo(ctx: String, msg: String) = logger.log("challenges-service", Level.INFO, msg, ctx)
-    fun logError(ctx: String, msg: String) = logger.log("challenges-service", Level.ERROR, msg, ctx)
+    fun log(level: Level, message: String, context: String) {
+        AppScopes.loggerScope.launch(Dispatchers.IO) {
+            logger.log("challenges-service", level, message, context)
+        }
+    }
+
+    fun logInfo(ctx: String, msg: String) = log(Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = log( Level.ERROR, msg, ctx)
 
 
     // payloads from challenges-interface

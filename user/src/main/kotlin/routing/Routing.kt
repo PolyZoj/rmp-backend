@@ -16,6 +16,7 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,6 +31,10 @@ import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.producer.KafkaProducer
 import java.util.concurrent.ConcurrentHashMap
 
+object AppScopes {
+    /** Detached from individual requests, cancelled only on shutdown. */
+    val loggerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+}
 
 fun Application.configureRouting(
     reqProcessor: RequestProcessor,
@@ -43,7 +48,9 @@ fun Application.configureRouting(
     val logger = LogSender(kafkaProducer)
 
     fun log(level: Level, message: String, context: String) {
-        logger.log("user", level, message, context)
+        AppScopes.loggerScope.launch(Dispatchers.IO) {
+            logger.log("user", level, message, context)
+        }
     }
 
     fun logRequest(context: String) =
