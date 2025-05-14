@@ -3,6 +3,7 @@ package ru.polyZoj.db
 import common.models.EnergySystem
 import common.models.FriendshipStatus
 import common.models.UnitSystem
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Slf4jSqlDebugLogger
@@ -14,9 +15,11 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 
 object DatabaseFactory {
     private lateinit var config: DataSourceConfig
+    private lateinit var dbDispatcher: CoroutineDispatcher
 
     internal fun init(cfg: DataSourceConfig) {
         config = cfg
+        dbDispatcher = Dispatchers.IO.limitedParallelism(config.maxPoolSize)
 
         writeBlocking {
             addLogger(StdOutSqlLogger)
@@ -56,16 +59,12 @@ object DatabaseFactory {
     }
 
     suspend fun <T> read(block: org.jetbrains.exposed.sql.Transaction.() -> T): T =
-        newSuspendedTransaction(Dispatchers.IO, config.replicaDb) {
-            addLogger(StdOutSqlLogger)
-            addLogger(Slf4jSqlDebugLogger)
+        newSuspendedTransaction(dbDispatcher, config.replicaDb) {
             block()
         }
 
     suspend fun <T> write(block: org.jetbrains.exposed.sql.Transaction.() -> T): T =
-        newSuspendedTransaction(Dispatchers.IO, config.masterDb) {
-            addLogger(StdOutSqlLogger)
-            addLogger(Slf4jSqlDebugLogger)
+        newSuspendedTransaction(dbDispatcher, config.masterDb) {
             block()
         }
 

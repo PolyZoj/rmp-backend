@@ -5,6 +5,8 @@ import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 class LogSender(
     private val producer: KafkaProducer<String, DataPayload>,
@@ -12,8 +14,10 @@ class LogSender(
 ) {
     private val logger: Logger = LoggerFactory.getLogger(LogSender::class.java)
 
+    @OptIn(ExperimentalTime::class)
     fun log(serviceName: String, level: Level, logMessage: String, context: String) {
         val payload = DataPayload.build(logMessage) {
+            param("timestamp", Clock.System.now().toEpochMilliseconds())
             param("serviceName", serviceName)
             param("level", level.label)
             param("logMessage", logMessage)

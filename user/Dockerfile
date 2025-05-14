@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/home/gradle/.gradle,sharing=private \
     --mount=type=cache,target=/root/.gradle,sharing=private \
     gradle --no-daemon downloadDependencies
 
-COPY ${SERVICE}/src                  src
+COPY ${SERVICE}/src/main                  src/main
 
 RUN --mount=type=cache,target=/home/gradle/.gradle,sharing=private \
     --mount=type=cache,target=/root/.gradle,sharing=private \

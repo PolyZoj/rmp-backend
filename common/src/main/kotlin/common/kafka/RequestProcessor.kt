@@ -38,7 +38,7 @@ open class RequestProcessor {
         ))
 
         try {
-            val resultPayload = withTimeoutOrNull(5000) { responseDeferred.await() }
+            val resultPayload = withTimeoutOrNull(30_000) { responseDeferred.await() }
 
             when {
                 resultPayload == null -> call.respond(

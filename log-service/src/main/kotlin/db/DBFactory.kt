@@ -1,5 +1,6 @@
 package ru.polyZoj.db
 
+import java.sql.Timestamp
 import javax.sql.DataSource
 
 object DBFactory {
@@ -28,18 +29,19 @@ object DBFactory {
         }
     }
 
-    fun insertLog(serviceName: String, level: String, message: String, context: String?) {
+    fun insertLog(timestamp: Timestamp, serviceName: String, level: String, message: String, context: String?) {
         dataSource.connection.use { conn ->
             val sql = """
                 INSERT INTO logs (timestamp, service_name, level, message, context)
-                VALUES (now(), ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
             """.trimIndent()
 
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, serviceName)
-                stmt.setString(2, level)
-                stmt.setString(3, message)
-                stmt.setString(4, context ?: "")
+                stmt.setTimestamp(1, timestamp)
+                stmt.setString(2, serviceName)
+                stmt.setString(3, level)
+                stmt.setString(4, message)
+                stmt.setString(5, context ?: "")
                 stmt.executeUpdate()
             }
         }

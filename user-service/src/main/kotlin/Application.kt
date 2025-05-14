@@ -25,12 +25,21 @@ import common.models.UserBasicInfo
 import common.models.UserRegistration
 import common.models.UserUpdatable
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import ru.polyZoj.configs.JwtConfig
 import ru.polyZoj.configs.generateToken
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 
 val pendingResponses = ConcurrentHashMap<String, CompletableFuture<DataPayload>>()
+
+object AppScopes {
+    /** Detached from individual requests, cancelled only on shutdown. */
+    val loggerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+}
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
@@ -54,9 +63,13 @@ fun Application.module() {
     val producerService = KafkaProducerService(kafkaProducer)
 
     val logger = LogSender(kafkaProducer)
-    fun logInfo(ctx: String, msg: String) = logger.log("user-service", Level.INFO, msg, ctx)
-    fun logError(ctx: String, msg: String) = logger.log("user-service", Level.ERROR, msg, ctx)
-
+    fun fireLog(level: Level, msg: String, ctx: String) {
+        AppScopes.loggerScope.launch(Dispatchers.IO) {
+            logger.log("user-service", level, msg, ctx)
+        }
+    }
+    fun logInfo(ctx: String, msg: String) = fireLog(Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = fireLog(Level.ERROR, msg, ctx)
     val responseConsumer = KafkaConsumerService(createKafkaConsumer("user-service-consumer"), listOf(USER_SERVICE_RES))
     responseConsumer.startConsuming { conversationId, message ->
         pendingResponses[conversationId]?.complete(message)

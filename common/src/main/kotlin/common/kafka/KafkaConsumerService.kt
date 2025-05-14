@@ -30,7 +30,7 @@ class KafkaConsumerService(
                         handler(record.key(), record.value())
                     }
                 }
-                consumer.commitSync()
+                consumer.commitAsync()
             }
         }
     }
@@ -55,8 +55,6 @@ fun createKafkaConsumer(groupId: String): KafkaConsumer<String, DataPayload> {
         put("enable.auto.commit", "false")
 
         put("isolation.level", "read_committed")
-        put("max.poll.records", "50")
-
         put("session.timeout.ms", "15000")
         put("heartbeat.interval.ms", "5000")
         put("max.poll.interval.ms", "300000")

@@ -2,7 +2,6 @@ package ru.polyZoj.repositories
 
 import at.favre.lib.crypto.bcrypt.BCrypt
 import common.Level
-import common.LogSender
 import org.jetbrains.exposed.exceptions.ExposedSQLException
 import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -21,9 +20,12 @@ import common.models.UserBasicInfo
 import common.models.UserDTO
 import common.models.UserRegistration
 import common.models.UserUpdatable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.lowerCase
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.update
+import ru.polyZoj.AppScopes
 import ru.polyZoj.cache.RedisFactory
 import ru.polyZoj.cache.getJson
 import ru.polyZoj.cache.setJson
@@ -32,7 +34,7 @@ import kotlin.time.ExperimentalTime
 import kotlin.time.toJavaInstant
 import kotlin.time.toKotlinInstant
 
-class UserRepository(private val logger: LogSender) {
+class UserRepository(private val log: (Level, String, String) -> Unit) {
 
     /**
      * Cache keys:
@@ -46,11 +48,10 @@ class UserRepository(private val logger: LogSender) {
      */
     private val redis = RedisFactory.sync
 
-    fun logInfo (ctx: String, msg: String) = logger.log("user-interface", Level.INFO,  msg, "UserRepository: $ctx")
-    fun logError(ctx: String, msg: String) = logger.log("user-interface", Level.ERROR, msg, "UserRepository: $ctx")
-    fun logDebug(ctx: String, msg: String) = logger.log("user-interface", Level.DEBUG, msg, "UserRepository: $ctx")
-    fun logWarn (ctx: String, msg: String) = logger.log("user-interface", Level.WARN,  msg, "UserRepository: $ctx")
-    fun logTrace(ctx: String, msg: String) = logger.log("user-interface", Level.TRACE, msg, "UserRepository: $ctx")
+    fun logInfo (ctx: String, msg: String) = log(Level.INFO,  msg, "UserRepository: $ctx")
+    fun logError(ctx: String, msg: String) = log(Level.ERROR, msg, "UserRepository: $ctx")
+    fun logDebug(ctx: String, msg: String) = log(Level.DEBUG, msg, "UserRepository: $ctx")
+    fun logWarn (ctx: String, msg: String) = log(Level.WARN,  msg, "UserRepository: $ctx")
 
     /** Look up a user’s id by username */
     suspend fun findByUsername(username: String): Int? {
@@ -74,8 +75,10 @@ class UserRepository(private val logger: LogSender) {
         }
         if (result != null) {
             logInfo(ctx, "Found id=${result} of $username in database")
-            logDebug(ctx, "Setting cache for userIdOf:username:$username")
-            redis.setJson("userIdOf:username:$username", result, 600)
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting cache for userIdOf:username:$username")
+                redis.setJson("userIdOf:username:$username", result, 600)
+            }
         } else {
             logError(ctx, "User not found in database")
         }
@@ -103,8 +106,10 @@ class UserRepository(private val logger: LogSender) {
         }
         if (result != null) {
             logInfo(ctx, "Found username=${result} of id=$userId in database")
-            logDebug(ctx, "Setting cache for usernameOf:userId:$userId")
-            redis.setJson("usernameOf:userId:$userId", result, 600)
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting cache for usernameOf:userId:$userId")
+                redis.setJson("usernameOf:userId:$userId", result, 600)
+            }
         } else {
             logError(ctx, "Username not found in database for id=$userId")
         }
@@ -144,10 +149,12 @@ class UserRepository(private val logger: LogSender) {
 
         if (userId != null) {
             logInfo(ctx, "Login successful for $username in database (userId=$userId)")
-            logDebug(ctx, "Setting caches for userId=$userId")
-            redis.setJson("userIdOf:username:$username", userId, 600)
-            redis.setJson("usernameOf:userId:$userId", username, 600)
-            redis.setJson("passwordOf:userId:$userId", password, 600)
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting caches for userId=$userId")
+                redis.setJson("userIdOf:username:$username", userId, 600)
+                redis.setJson("usernameOf:userId:$userId", username, 600)
+                redis.setJson("passwordOf:userId:$userId", password, 600)
+            }
         } else {
             logError(ctx, "Login failed for $username – credentials not found in database")
         }
@@ -175,7 +182,6 @@ class UserRepository(private val logger: LogSender) {
                         it[UsersTable.isAdmin] = false
                         it[UsersTable.createdAt] = Clock.System.now().toJavaInstant()
                     }.value
-                logDebug(ctx, "Inserted into UsersTable (userId=$userId)")
 
                 // 2) credentials
                 UserCredentialsTable.insert {
@@ -183,7 +189,6 @@ class UserRepository(private val logger: LogSender) {
                     it[UserCredentialsTable.username] = reg.username
                     it[UserCredentialsTable.password] = reg.password
                 }
-                logDebug(ctx, "Inserted into UserCredentialsTable (userId=$userId)")
 
                 val unitSystemId   = StaticLookups.idFor(reg.unitSystem)
                 val energySystemId = StaticLookups.idFor(reg.energySystem)
@@ -196,7 +201,6 @@ class UserRepository(private val logger: LogSender) {
                     it[UserParametersTable.birthDate] = reg.birthDate
                     it[UserParametersTable.unitSystemId] = unitSystemId
                 }
-                logDebug(ctx, "Inserted into UserParametersTable (userId=$userId)")
 
                 // get the health goal id or add it
                 var healthGoalId: Int? = null
@@ -210,7 +214,6 @@ class UserRepository(private val logger: LogSender) {
                         ?: PrimaryHealthGoalsTable.insert {
                             it[PrimaryHealthGoalsTable.goalName] = healthGoal
                         }[PrimaryHealthGoalsTable.healthGoalId]
-                    logTrace(ctx, "Inserted/Found PrimaryHealthGoalsTable row (userId=$userId)")
                 }
 
                 // 4) preferences
@@ -225,15 +228,17 @@ class UserRepository(private val logger: LogSender) {
                     it[UserPreferencesTable.sleepGoal] = reg.sleepGoal
                     it[UserPreferencesTable.workoutsGoal] = reg.workoutsGoal
                 }
-                logDebug(ctx, "Inserted into UserPreferencesTable (userId=$userId)")
                 userId
             }
 
-            logDebug(ctx, "Setting caches for userId=$newUserId")
-            redis.setJson("usernameOf:userId:${newUserId}", reg.username, 600)
-            redis.setJson("userIdOf:username:${reg.username}", newUserId, 600)
-            redis.setJson("passwordOf:userId:${newUserId}", reg.password, 600)
-            redis.del("allIds")
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting caches for userId=$newUserId")
+                redis.setJson("usernameOf:userId:${newUserId}", reg.username, 600)
+                redis.setJson("userIdOf:username:${reg.username}", newUserId, 600)
+                redis.setJson("passwordOf:userId:${newUserId}", reg.password, 600)
+                redis.del("allIds")
+            }
+
             logInfo(ctx, "User registered successfully (userId=$newUserId)")
             return newUserId
         } catch (e: ExposedSQLException) {
@@ -320,8 +325,10 @@ class UserRepository(private val logger: LogSender) {
 
         if (userDTO != null) {
             logInfo(ctx, "Fetched UserDTO successfully for userId=$userId")
-            logDebug(ctx, "Setting cache for userDTOOf:userId:$userId")
-            redis.setJson("userDTOOf:userId:$userId", userDTO, 600)
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting cache for userDTOOf:userId:$userId")
+                redis.setJson("userDTOOf:userId:$userId", userDTO, 600)
+            }
         } else {
             logError(ctx, "UserDTO not found in database for userId=$userId")
         }
@@ -340,15 +347,17 @@ class UserRepository(private val logger: LogSender) {
 
             if (deletedCount > 0) {
                 logInfo(ctx, "User deletion succeeded for userId=$userId (rows=$deletedCount)")
-                logDebug(ctx, "Deleting cache for userId=$userId")
-                redis.del(
-                    "userDTOOf:userId:$userId",
-                    "usernameOf:userId:$userId",
-                    "passwordOf:userId:$userId",
-                    "allIds",
-                    "friendshipRequestsOf:userId:$userId",
-                    "friendsOf:userId:$userId"
-                )
+                AppScopes.cacheScope.launch(Dispatchers.IO) {
+                    logDebug(ctx, "Deleting cache for userId=$userId")
+                    redis.del(
+                        "userDTOOf:userId:$userId",
+                        "usernameOf:userId:$userId",
+                        "passwordOf:userId:$userId",
+                        "allIds",
+                        "friendshipRequestsOf:userId:$userId",
+                        "friendsOf:userId:$userId"
+                    )
+                }
                 true
             } else {
                 logError(ctx, "User not found to delete for userId=$userId")
@@ -400,8 +409,10 @@ class UserRepository(private val logger: LogSender) {
                 }
             }
             logInfo(ctx, "User data updated successfully for userId=$userId")
-            logDebug(ctx, "Deleting cache for userId=$userId")
-            redis.del("userDTOOf:userId:$userId")
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Deleting cache for userId=$userId")
+                redis.del("userDTOOf:userId:$userId")
+            }
             true
         } catch (e: Exception) {
             logError(ctx, "Error updating user data for userId=$userId: ${e.message}")
@@ -500,20 +511,24 @@ class UserRepository(private val logger: LogSender) {
 
         return getFriendshipsWhereStatus(userId, FriendshipStatus.PENDING).also {
             logInfo(ctx, "Found ${it.size} friendship requests for userId=$userId from database")
-            logDebug(ctx, "Setting cache for friendshipRequestsOf:userId:$userId")
-            redis.setJson("friendshipRequestsOf:userId:$userId", it, 600)
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting cache for friendshipRequestsOf:userId:$userId")
+                redis.setJson("friendshipRequestsOf:userId:$userId", it, 600)
+            }
         }
     }
 
     fun deleteFriendshipCache(uId: Int, fId: Int) {
-        val ctx = "deleteFriendshipCache"
-        logDebug(ctx, "Entering $ctx for uId=$uId and fId=$fId – deleting related cache keys")
-        redis.del(
-            "friendshipRequestsOf:userId:$fId",
-            "friendshipRequestsOf:userId:$uId",
-            "friendsOf:userId:$fId",
-            "friendsOf:userId:$uId"
-        )
+        AppScopes.cacheScope.launch(Dispatchers.IO) {
+            val ctx = "deleteFriendshipCache"
+            logDebug(ctx, "Entering $ctx for uId=$uId and fId=$fId – deleting related cache keys")
+            redis.del(
+                "friendshipRequestsOf:userId:$fId",
+                "friendshipRequestsOf:userId:$uId",
+                "friendsOf:userId:$fId",
+                "friendsOf:userId:$uId"
+            )
+        }
     }
 
     /** Set friendship request status. Returns success boolean */
@@ -553,7 +568,6 @@ class UserRepository(private val logger: LogSender) {
                                 it[friendId] = fId
                                 it[friendshipStatus] = statusId
                             }
-                            logInfo(ctx, "Friendship request created with status=$status between uId=$uId and fId=$fId")
                         } else {
                             FriendshipsTable.update({
                                 (FriendshipsTable.userId eq uId) and
@@ -563,7 +577,6 @@ class UserRepository(private val logger: LogSender) {
                             }) {
                                 it[friendshipStatus] = statusId
                             }
-                            logInfo(ctx, "Friendship status updated to $status between uId=$uId and fId=$fId")
                         }
                         deleteFriendshipCache(uId, fId)
                         true
@@ -615,8 +628,10 @@ class UserRepository(private val logger: LogSender) {
 
         return getFriendshipsWhereStatus(userId, FriendshipStatus.ACCEPTED).also {
             logInfo(ctx, "Found ${it.size} friends for userId=$userId from database")
-            logDebug(ctx, "Setting cache for friendsOf:userId:$userId")
-            redis.setJson("friendsOf:userId:$userId", it, 600)
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting cache for friendsOf:userId:$userId")
+                redis.setJson("friendsOf:userId:$userId", it, 600)
+            }
         }
     }
 
@@ -686,7 +701,7 @@ class UserRepository(private val logger: LogSender) {
                 UsersTable.update({ UsersTable.id eq userId }) { it[UsersTable.clubId] = clubId }
             }
             logInfo(ctx, "Club ID updated to $clubId for userId=$userId")
-            redis.del("userDTOOf:userId:$userId")
+            AppScopes.cacheScope.launch(Dispatchers.IO) {redis.del("userDTOOf:userId:$userId")}
             true
         } catch (e: Exception) {
             logError(ctx, "Error updating club ID for userId=$userId: ${e.message}")
@@ -711,8 +726,10 @@ class UserRepository(private val logger: LogSender) {
                 UsersTable.selectAll().map { it[UsersTable.id].value }
             }
             logInfo(ctx, "Fetched ${list.size} user IDs from database")
-            logDebug(ctx, "Setting cache for allIds")
-            redis.setJson("allIds", list, 60)
+            AppScopes.cacheScope.launch(Dispatchers.IO) {
+                logDebug(ctx, "Setting cache for allIds")
+                redis.setJson("allIds", list, 60)
+            }
             list
         } catch (e: Exception) {
             logError(ctx, "Error fetching all user IDs: ${e.message}")

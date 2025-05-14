@@ -42,7 +42,7 @@ fun Application.configureRouting() {
     val bcryptHasher = BCrypt.withDefaults()
 
     fun hash(plain: String): String =
-        bcryptHasher.hashToString(12, plain.toCharArray())
+        bcryptHasher.hashToString(3, plain.toCharArray())
 
     val producer = createKafkaProducer()
     val consumer = createKafkaConsumer("auth-consumer")
@@ -106,12 +106,13 @@ fun Application.configureRouting() {
                 } catch (_: SerializationException) {
                     return@post respondError(call, HttpStatusCode.BadRequest, "Malformed JSON", staticPath)
                 }
+                log(Level.DEBUG, "Before hash", staticPath)
                 val hashedPassword = try {
                     hash(json["password"]?.jsonPrimitive?.content!!)
                 } catch (_: Exception) {
                     return@post respondError(call, HttpStatusCode.BadRequest, "Malformed password", staticPath)
                 }
-
+                log(Level.DEBUG, "After hash", staticPath)
                 val payload = DataPayload.build("register") {
                     param("username", json["username"]?.jsonPrimitive?.content)
                     param("password", hashedPassword)

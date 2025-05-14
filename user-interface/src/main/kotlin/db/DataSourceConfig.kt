@@ -3,10 +3,7 @@ package ru.polyZoj.db
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.Slf4jSqlDebugLogger
-import org.jetbrains.exposed.sql.StdOutSqlLogger
 import org.jetbrains.exposed.sql.Transaction
-import org.jetbrains.exposed.sql.addLogger
 import org.jetbrains.exposed.sql.transactions.transaction
 
 class DataSourceConfig {
@@ -14,19 +11,22 @@ class DataSourceConfig {
             "${env("DB_HOST_REPLICA")}:${env("DB_PORT_REPLICA")}"
     private val masterDs: HikariDataSource
     private val replicaDs: HikariDataSource
+    val maxPoolSize = 100
 
     init {
         fun cfg(hosts: String, target: String) = HikariConfig().apply {
             jdbcUrl = "jdbc:postgresql://$hosts/${env("DB_NAME")}?" +
-                    "targetServerType=$target&loadBalanceHosts=true"
-            username            = env("DB_USER")
-            password            = env("DB_PASSWORD")
-            driverClassName     = "org.postgresql.Driver"
-            maximumPoolSize     = 10
-            transactionIsolation= "TRANSACTION_REPEATABLE_READ"
-            connectionTestQuery = "SELECT 1"
-            initializationFailTimeout = 0
-            healthCheckProperties["connectTimeout"] = "5000"
+                    "targetServerType=$target" + "&loadBalanceHosts=true" + "&reWriteBatchedInserts=true"
+            username                                   = env("DB_USER")
+            password                                   = env("DB_PASSWORD")
+            driverClassName                            = "org.postgresql.Driver"
+            maximumPoolSize                            = maxPoolSize
+            minimumIdle                                = 20
+            connectionTimeout                          = 10_000 // ms
+//            transactionIsolation                       = "TRANSACTION_REPEATABLE_READ"
+            connectionTestQuery                        = "SELECT 1"
+            initializationFailTimeout                  = 10_000
+            healthCheckProperties["connectTimeout"]    = "5000"
         }
 
         masterDs  = HikariDataSource(cfg(allHosts, "primary"))
@@ -44,8 +44,6 @@ class DataSourceConfig {
      */
     fun <T> withWrite(block: Transaction.() -> T): T {
         return transaction(masterDb) {
-            addLogger(StdOutSqlLogger)
-            addLogger(Slf4jSqlDebugLogger)
             block()
         }
     }
@@ -56,8 +54,6 @@ class DataSourceConfig {
      */
     fun <T> withRead(block: Transaction.() -> T): T {
         return transaction(replicaDb) {
-            addLogger(StdOutSqlLogger)
-            addLogger(Slf4jSqlDebugLogger)
             block()
         }
     }

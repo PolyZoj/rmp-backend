@@ -14,6 +14,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import ru.polyZoj.db.DBFactory
 import ru.polyZoj.db.DataSourceConfig
+import java.sql.Timestamp
 
 
 inline fun <reified T> getLogger(): Logger = LoggerFactory.getLogger(T::class.java)
@@ -47,6 +48,7 @@ fun Application.module() {
 
         try {
             DBFactory.insertLog(
+                timestamp = Timestamp(message.getParam<Long>("timestamp")!!),
                 serviceName = message.getParam<String>("serviceName")!!,
                 level = message.getParam<String>("level")!!,
                 message = message.getParam<String>("logMessage")!!,

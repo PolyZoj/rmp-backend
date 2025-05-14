@@ -21,11 +21,21 @@ import common.models.UserBasicInfo
 import io.ktor.http.HttpStatusCode
 import common.models.UserRegistration
 import common.models.UserUpdatable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import ru.polyZoj.repositories.UserRepository
 
 
 fun main() {
     embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
+}
+
+object AppScopes {
+    /** Detached from individual requests, cancelled only on shutdown. */
+    val cacheScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val loggerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 }
 
 fun Application.module() {
@@ -45,13 +55,18 @@ fun Application.module() {
     val producerService = KafkaProducerService(kafkaProducer)
 
     val logger = LogSender(kafkaProducer)
-    fun logInfo(ctx: String, msg: String) = logger.log("user-interface", Level.INFO, msg, ctx)
-    fun logError(ctx: String, msg: String) = logger.log("user-interface", Level.ERROR, msg, ctx)
+    fun fireLog(level: Level, msg: String, ctx: String) {
+        AppScopes.loggerScope.launch(Dispatchers.IO) {
+            logger.log("user-interface", level, msg, ctx)
+        }
+    }
+    fun logInfo(ctx: String, msg: String) = fireLog(Level.INFO, msg, ctx)
+    fun logError(ctx: String, msg: String) = fireLog(Level.ERROR, msg, ctx)
 
     val kafkaConsumer = createKafkaConsumer("user-interface-consumer")
     val consumerService = KafkaConsumerService(kafkaConsumer, listOf(USER_SERVICE_REQ))
 
-    val userRepository = UserRepository(logger)
+    val userRepository = UserRepository(::fireLog)
 
     suspend fun friendshipAction(
         command: String,
