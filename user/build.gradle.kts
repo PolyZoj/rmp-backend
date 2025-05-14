@@ -41,6 +41,7 @@ dependencies {
 
     testImplementation("io.ktor:ktor-server-test-host:3.1.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.1.20")
+    testImplementation("io.mockk:mockk:1.14.2")
 }
 
 tasks.register("downloadDependencies") {

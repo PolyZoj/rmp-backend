@@ -12,11 +12,12 @@ import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.testing.*
-import org.apache.kafka.common.serialization.Serializer
 import kotlin.test.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
@@ -24,8 +25,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecords
 import org.apache.kafka.clients.consumer.MockConsumer
 import org.apache.kafka.clients.consumer.OffsetResetStrategy
 import org.apache.kafka.clients.producer.KafkaProducer
-import org.apache.kafka.clients.producer.MockProducer
-import org.apache.kafka.common.serialization.StringSerializer
+import io.mockk.mockk
+import kotlinx.serialization.json.Json
 import ru.polyZoj.routing.configureRouting
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
@@ -60,17 +61,8 @@ private class DummyConsumer :
         ConsumerRecords.empty()
 }
 
-/** Serialises a DataPayload to an empty byte-array – we never really send anything. */
-private object NoopDataPayloadSerializer : Serializer<DataPayload> {
-    override fun serialize(topic: String?, data: DataPayload?): ByteArray = ByteArray(0)
-}
-
-/** In-memory Kafka producer stub that satisfies the whole KafkaProducer API. */
-private class DummyProducer : MockProducer<String, DataPayload>(
-    /* autoComplete */ true,
-    /* keySerializer  */ StringSerializer(),
-    /* valueSerializer*/ NoopDataPayloadSerializer
-)
+private val dummyProducer =
+    mockk<KafkaProducer<String, DataPayload>>(relaxed = true)
 
 class UserRoutingTest {
 
@@ -94,9 +86,17 @@ class UserRoutingTest {
             }
         }
 
+        install(ContentNegotiation) {
+            json(Json {
+                prettyPrint = true
+                isLenient = true
+                ignoreUnknownKeys = true
+            })
+        }
+
         configureRouting(
             processor,
-            DummyProducer(),
+            dummyProducer,
             DummyConsumer()
         )
     }
